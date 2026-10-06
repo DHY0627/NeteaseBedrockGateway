@@ -205,8 +205,16 @@ NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的�
 
 网易客户端走的是**非标准 Bedrock 链路**（RakNet 协议版本 8、自定义协议版本、不做 Bedrock 层加密），标准 Geyser 无法直接对接，需要在你的 Geyser 上安装配套扩展：
 
-- 扩展仓库：[GeyserNetease](../GeyserNetease)（本项目的配套扩展）
-- 安装位置（按平台）：
+- 扩展仓库：[DHY0627/GeyserNetease](https://github.com/DHY0627/GeyserNetease)（本项目配套的 fork，基于 [LoHJG/GeyserNetease](https://github.com/LoHJG/GeyserNetease)，适配 Geyser 2.11.3 并修复了下面的 hostname 问题）
+- **直接下载预编译 jar**（不用自己编译）：
+  [`GeyserNeteaseExtension.jar`](https://github.com/DHY0627/GeyserNetease/raw/main/dist/GeyserNeteaseExtension.jar)
+
+  | 项 | 值 |
+  |---|---|
+  | 大小 / SHA256 | 3,118,355 字节 / `3388f14b508d6c5e0dea5021ceb27647dded65b7b48a1531c78a3a51216dbdf9` |
+  | 适配 Geyser | 2.11.3（扩展版本 1.1.0） |
+
+- 安装位置（按平台，是 Geyser 的 **`extensions/` 子目录**，不是 `plugins/` 根目录）：
   - Standalone：`extensions/GeyserNeteaseExtension.jar`
   - Velocity：`plugins/Geyser-Velocity/extensions/GeyserNeteaseExtension.jar`
   - BungeeCord：`plugins/Geyser-BungeeCord/extensions/GeyserNeteaseExtension.jar`
@@ -214,8 +222,11 @@ NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的�
 - **必须**给扩展设置真实地址（否则握手 hostname 为空，会在 `Geyser → 代理` 这一跳被静默掐断）：
 
   ```
-  -DGeyserNetease.ServerAddress=example.com:19132
+  # 加在 java 命令的 -jar 之前，例如：
+  java -DGeyserNetease.ServerAddress=你的域名:19132 -jar geyser.jar
   ```
+
+  > jar 里的默认值是脱敏示例 `example.com:19132`，**不能直接用**，必须换成你自己的地址。
 
 - `-target` 指向 **Geyser 的 RakNet 端口**（UDP，Geyser 默认 `19132`）。
 
@@ -475,7 +486,7 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 ### 思路与实现参考
 
 - [Koud-Wind/Netease-minecraft-LAN-connects-to-Server](https://github.com/Koud-Wind/Netease-minecraft-LAN-connects-to-Server)：Java 版「房主开房 + 引流到服务器」同思路
-- [GeyserMC/Geyser](https://github.com/GeyserMC/Geyser)、配套扩展 [GeyserNetease](../GeyserNetease)
+- [GeyserMC/Geyser](https://github.com/GeyserMC/Geyser)、配套扩展 [DHY0627/GeyserNetease](https://github.com/DHY0627/GeyserNetease)（基于 [LoHJG/GeyserNetease](https://github.com/LoHJG/GeyserNetease)）
 - ProtoHax（`dev.sora.relay`）：中继 / 中间层实现参考
 
 ### 许可证说明

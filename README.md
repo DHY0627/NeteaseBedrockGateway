@@ -165,58 +165,7 @@ Get-ChildItem .\cmd -Directory | ForEach-Object {
   go build -o "bin\$($_.Name).exe" "./cmd/$($_.Name)"
 }
 ```
-
-### 自动化构建（GitHub Actions）
-
-仓库里有两个 workflow：
-
-| Workflow | 触发时机 | 做什么 |
-|---|---|---|
-| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | 每次 push 到 `main` / PR | 拉 submodule → `go vet ./...` → `go build ./...` → 试编全部 9 个发布目标（只验证，不发布） |
-| [`.github/workflows/release.yml`](.github/workflows/release.yml) | 推送 `v*` tag（或手动触发） | 9 个平台并行编译 + 诊断工具 → 打包 → 生成 `SHA256SUMS.txt` → 发 GitHub Release |
-
-**发布矩阵（9 个目标）**：
-
-| GOOS | GOARCH | 产物后缀 |
-|---|---|---|
-| `windows` | `386` / `amd64` / `arm64` | `.exe` |
-| `linux` | `386` / `amd64` / `arm`（GOARM=7）/ `arm64` | 无 |
-| `darwin` | `amd64` / `arm64` | 无 |
-
-**发新版本**：
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-推完 tag 后到 [Actions](https://github.com/DHY0627/NeteaseBedrockGateway/actions) 看进度，约 3–5 分钟出 Release。
-
-**手动触发**（不建 tag 也能跑）：Actions → Release → `Run workflow` → 填一个 tag 名（如 `v1.0.0`）。
-
-**本地编全部 9 个目标**（不用等 Actions）：
-
-```powershell
-# Windows
-.\scripts\build.ps1
-```
-
-```bash
-# Linux / macOS
-./scripts/build.sh
-```
-
-两个脚本默认都编全部 9 个目标，也可以只编指定的：`.\scripts\build.ps1 -Targets linux/amd64,linux/armv7`
-或 `./scripts/build.sh linux/amd64 linux/armv7`（32 位 ARM 写成 `armv7`，脚本会自动转成 `GOARCH=arm GOARM=7`）。
-
-**自定义**：`release.yml` 的 `matrix.include` 就是目标平台列表，增删即可。
-诊断工具列表在 `release` job 的 `for tool in ...` 那行，缺了哪个加上去就行。
-
-> ⚠️ workflow 里 **`submodules: recursive` 不能删**。依赖在 `third_party/`，不拉 submodule 必然编译失败；
-> 两个 workflow 都加了「校验 submodule 是否就位」的步骤，就是为了让这种失败一眼能看懂。
-
 ---
-
 ## 使用方法
 
 ### 1. 启动网关（名称设置其实没用）

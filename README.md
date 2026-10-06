@@ -228,6 +228,22 @@ NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的�
 
 - `-target` 指向 **Geyser 的 RakNet 端口**（UDP，Geyser 默认 `19132`）。
 
+> ⚠️ **`-target` 和 `-server-address` 是两个不同的东西，别搞混：**
+>
+> | 参数 | 含义 | 谁去连它 |
+> |---|---|---|
+> | `-target` | 玩家流量**转发到哪**（你的 Geyser / BDS） | 网关自己去连 |
+> | `-server-address` | 玩家**去哪找房主**（网易 NetherNet 入口） | **玩家**去连 |
+>
+> `-server-address` 留空时**继承 `-target`**。绝大多数部署里二者就是同一个地址（网关与 Geyser 同机、共用同一个 RakNet 端口），
+> 所以通常不用写。但只要它们不同，**必须显式指定 `-server-address`**，否则会把错误的地址广播给玩家，
+> 表现为**玩家进房后一直卡在「等待房主开始游戏」**，且网关日志里**看不到 `★ 收到玩家连接`**。
+>
+> 启动时日志会同时打印这两个值，对着确认一遍：
+> ```
+> [房主] 转发目标: geyser.example.com:19132，上报房主地址: nether.example.com:49780，...
+> ```
+
 ### 4. 常驻运行
 
 **Linux（systemd）** — `/etc/systemd/system/netease-gateway.service`：
@@ -272,7 +288,8 @@ cat /opt/netease-gateway/room.txt         # 看当前房间号
 | `-room-name`      | `NeteaseBedrockGateway Host Room` | 房间名称（其实没用）                               |
 | `-capacity`       | `8`                               | 房间容量                                     |
 | `-room-password`  | 空                                 | 房间密码（留空 = 无密码）                           |
-| `-target`         | 空（**必填**）                         | 转发目标：**Geyser / BDS 的 RakNet 端口**，例如 `服务器IP/域名:19132` |
+| `-target`         | 空（**必填**）                         | **转发目标**：玩家流量连到哪（Geyser / BDS 的 RakNet 端口），例如 `服务器IP/域名:19132` |
+| `-server-address` | 空（= 继承 `-target`）                 | **上报给网易的房主地址**：玩家去哪找房主（NetherNet 入口）。只有与 `-target` 不同才需要写 |
 | `-map-id`         | `0`                               | 房间 MapID（游戏版本标识）                         |
 | `-protocol-id`    | `42`                              | 房间 ProtocolID（默认 42 与原版房间一致）             |
 | `-level-id`       | 空                                 | 房间 LevelID（版本标识字符串）                      |
@@ -379,7 +396,8 @@ go run ./cmd/diag/javaprobe -addr example.com:25565 -mode login -name TestPlayer
 
 | 症状 | 先看哪里 | 多半是 |
 |---|---|---|
-| 客户端一直「等待房主开始游戏」 | 网关日志有没有 `新玩家加入房间` + `已向玩家上报 NetherNetID` | `TanNotifyServerReady` 没发或发早了 |
+| 客户端一直「等待房主开始游戏」，且日志里**没有** `★ 收到玩家连接` | 启动日志里打印的「上报房主地址」是不是玩家能连到的地址 | `-server-address` / `-target` 填错，玩家拿到的是连不上的 NetherNet 入口 |
+| 客户端一直「等待房主开始游戏」，但日志里**有** `已向玩家上报 NetherNetID` | `TanNotifyServerReady` 是否发出 | `TanNotifyServerReady` 没发或发早了 |
 | 客户端连上但**零数据**、90 秒超时、`relay.log` 不生成 | 启动日志（标准输出）里 `收到玩家连接` 之后 | 依赖 `nemc-tan-lobby-solver` 没打补丁（见 [依赖与许可](#依赖与许可dependencies--licenses) 的 fork 说明） |
 | 客户端显示 **`数据流终止`**，Geyser 日志同款，Velocity 无日志 | 扩展嗅探日志（`-DGeyserNetease.Sniff=true`） | Geyser 的 java 握手 hostname 为空 → 设置 `-DGeyserNetease.ServerAddress` |
 | Geyser 报「服务器已过期/版本不支持」 | Geyser 日志 | 目标服缺 GeyserNetease 扩展，或扩展版本过旧 |

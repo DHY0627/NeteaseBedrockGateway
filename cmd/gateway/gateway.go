@@ -33,7 +33,8 @@ type gatewayConfig struct {
 	username, password     string
 	roomName, roomPassword string
 	roomCapacity           uint
-	target                 string
+	target                 string // 玩家流量转发目标（Geyser/BDS 的 RakNet 端口）
+	serverAddr             string // 上报给网易的房主地址（玩家据此连房主）；为空时回退到 target
 	mapID                  uint64
 	protocolID             uint8
 	levelID                string
@@ -109,7 +110,7 @@ func (g *gateway) run(ctx context.Context) error {
 
 		// 中转连接读循环：它一结束就说明房主与服务器的连接断了 → 需要重建房间。
 		go func() {
-			hostReadLoop(roomCtx, host, g.netherID, g.serverAddr(), g)
+			hostReadLoop(roomCtx, host, g.netherID, g.netherAddr(), g)
 			fail("与中转发服务器的连接已断开")
 		}()
 
@@ -226,7 +227,7 @@ func (g *gateway) ensureRoom(ctx context.Context) (*session, error) {
 
 		roomID, err := createRoom(ctx, host, g.cfg.roomName, g.cfg.roomCapacity, g.cfg.roomPassword,
 			g.cfg.mapID, g.cfg.protocolID, g.cfg.levelID, g.cfg.gameType, g.cfg.versionString,
-			g.netherID, g.serverAddr())
+			g.netherID, g.netherAddr())
 		if err != nil {
 			_ = host.raknetConn.Close()
 			log.Printf("[房主] 创建房间失败: %v", err)
@@ -360,8 +361,15 @@ func (g *gateway) keepaliveLoop(roomCtx context.Context, fail func(string)) {
 
 // ==================== 状态与落盘 ====================
 
-func (g *gateway) serverAddr() string {
-	return strings.ReplaceAll(g.cfg.target, ":", "|")
+// netherAddr 返回上报给网易的房主地址（网易用 "|" 分隔 host 与 port）。
+// 优先用 -server-address；未指定时回退到 -target —— 二者在
+// 「Geyser 与网关同机同端口」的部署下本来就相同。
+func (g *gateway) netherAddr() string {
+	addr := g.cfg.serverAddr
+	if addr == "" {
+		addr = g.cfg.target
+	}
+	return strings.ReplaceAll(addr, ":", "|")
 }
 
 func (g *gateway) setRoomAlive(roomID uint32) {

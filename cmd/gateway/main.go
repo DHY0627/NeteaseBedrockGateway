@@ -57,7 +57,8 @@ func main() {
 		roomName     = flag.String("room-name", "NeteaseBedrockGateway Host Room", "房间名称")
 		roomCapacity = flag.Uint("capacity", 8, "房间容量")
 		roomPassword = flag.String("room-password", "", "房间密码（可留空）")
-		target       = flag.String("target", "", "目标服务器地址（Geyser/BDS 的 RakNet 端口，必填，例如 服务器IP/域名:端口）")
+		target       = flag.String("target", "", "转发目标：玩家流量最终连到的服务器（Geyser/BDS 的 RakNet 端口，必填，例如 服务器IP/域名:49780）")
+		serverAddr   = flag.String("server-address", "", "上报给网易的房主地址（玩家据此连房主）。留空则与 -target 相同；二者不同时才需要单独指定")
 		mapID        = flag.Uint64("map-id", 0, "房间 MapID（游戏版本标识）")
 		protocolID   = flag.Uint("protocol-id", 42, "房间 ProtocolID（默认 42 匹配真实房间）")
 		levelID      = flag.String("level-id", "", "房间 LevelID（版本标识字符串）")
@@ -68,11 +69,24 @@ func main() {
 	)
 	flag.Parse()
 	if *username == "" || *password == "" || *target == "" {
-		fmt.Fprintln(os.Stderr, "用法: NeteaseBedrockGateway -u 用户名 -p 密码 -target 服务器IP/域名:端口 [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔]")
+		fmt.Fprintln(os.Stderr, "用法: NeteaseBedrockGateway -u 用户名 -p 密码 -target 服务器IP/域名:端口 [-server-address 房主地址] [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔]")
 		if *username != "" && *password != "" && *target == "" {
-			fmt.Fprintln(os.Stderr, "错误: -target 必填（玩家流量转发目标，例如 -target 服务器IP/域名:19132）")
+			fmt.Fprintln(os.Stderr, "错误: -target 必填（玩家流量转发目标，例如 -target 服务器IP/域名:49780）")
 		}
 		flag.Usage()
+		os.Exit(2)
+	}
+	// -server-address 是「玩家去哪找房主」，-target 是「玩家流量转发到哪」。
+	// 二者绝大多数情况下相同（同一台机器、同一个 RakNet 端口），留空即继承 -target。
+	if *serverAddr == "" {
+		*serverAddr = *target
+	}
+	if !strings.Contains(*serverAddr, ":") {
+		fmt.Fprintf(os.Stderr, "错误: -server-address 必须带端口，例如 %s:49780\n", *serverAddr)
+		os.Exit(2)
+	}
+	if !strings.Contains(*target, ":") {
+		fmt.Fprintf(os.Stderr, "错误: -target 必须带端口，例如 %s:49780\n", *target)
 		os.Exit(2)
 	}
 
@@ -91,7 +105,7 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 	// 生命周期交给 gateway：登录 → 开房 → 监听服务；房间失效（中转断开/被回收）自动重建。
-	log.Printf("[房主] 目标服务器: %s，房间信息落盘: %s，存活检查间隔: %s", *target, *roomFile, *keepalive)
+	log.Printf("[房主] 转发目标: %s，上报房主地址: %s，房间信息落盘: %s，存活检查间隔: %s", *target, *serverAddr, *roomFile, *keepalive)
 	g := &gateway{cfg: gatewayConfig{
 		username:      *username,
 		password:      *password,
@@ -99,6 +113,7 @@ func main() {
 		roomCapacity:  *roomCapacity,
 		roomPassword:  *roomPassword,
 		target:        *target,
+		serverAddr:    *serverAddr,
 		mapID:         *mapID,
 		protocolID:    uint8(*protocolID),
 		levelID:       *levelID,
@@ -180,7 +195,7 @@ func hostReadLoop(ctx context.Context, host *session, hostNetherID uint64, serve
 		}
 		switch p := pk.(type) {
 		case *packet.TanNewGuestResponse:
-			log.Printf("[房主] ★ 新玩家加入房间: ErrorCode=%d 玩家数=%d", p.ErrorCode, len(p.PlayerIDList))
+			log.Printf("[房主] ★ 新玩家加入房间（ErrorCode=%d 玩家数=%d）", p.ErrorCode, len(p.PlayerIDList))
 			if g != nil {
 				g.onRoomPlayers(len(p.PlayerIDList))
 			}

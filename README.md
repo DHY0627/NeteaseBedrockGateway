@@ -58,7 +58,7 @@
 ```
         网易原版客户端                                      你的服务器
    ┌────────────────────────────────┐          ┌──────────────────────────────┐
-   │ 本地联机 → 输入房间号 824615   │          │   Geyser (UDP 端口 )         │
+   │ 本地联机 → 输入房间号 123456   │          │   Geyser (UDP 49780)         │
    └───────────────┬────────────────┘          │     └── Velocity → Java 后端 │
                    │ ① 按房间号进房           └───────────────▲──────────────┘
                    ▼                                          │ ④ RakNet
@@ -91,18 +91,17 @@
 > ⚠️ **依赖用 git submodule 管理，clone 之后必须先拉取，否则编译不过。**
 > 三个外部依赖位于 `third_party/`，分别指向各自的 Git 仓库（两个是本项目的 fork）：
 > `third_party/nemc-tan-lobby-solver`、`third_party/go-raknet`、`third_party/g79client`。
-> 拉取命令（**clone 后第一件事**）：
+> 拉取命令（**clone 后第一件事**）：`git submodule update --init --recursive`，或者 clone 时直接带上 `--recursive`：
 > ```bash
-> git submodule update --init --recursive
+> git clone --recursive https://github.com/DHY0627/NeteaseBedrockGateway.git
 > ```
-> 如果你 clone 时想一步到位：`git clone --recurse-submodules https://github.com/DHY0627/NeteaseBedrockGateway.git`
 > 之后 `go build` 就正常了；`go.mod` 用相对路径 `./third_party/...` 指向它们，**不要**再执行 `go mod vendor`。
 > 只有第三方**间接**依赖（pion、x/crypto 等）仍需联网从模块代理下载，`go.sum` 里已固定版本与哈希。
 
 ### Windows
 
 ```powershell
-git clone --recurse-submodules https://github.com/DHY0627/NeteaseBedrockGateway.git
+git clone --recursive https://github.com/DHY0627/NeteaseBedrockGateway.git
 cd NeteaseBedrockGateway
 
 go build -o NeteaseBedrockGateway.exe ./cmd/gateway
@@ -117,7 +116,7 @@ go build -o bin/javaprobe.exe   ./cmd/diag/javaprobe
 ### Linux / macOS
 
 ```bash
-git clone --recurse-submodules https://github.com/DHY0627/NeteaseBedrockGateway.git
+git clone --recursive https://github.com/DHY0627/NeteaseBedrockGateway.git
 cd NeteaseBedrockGateway
 
 go build -o NeteaseBedrockGateway ./cmd/gateway
@@ -157,11 +156,11 @@ NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的�
 [房主] 目标服务器: 服务器IP/域名:端口，房间信息落盘: room.json，存活检查间隔: 25s
 [1/6] 认证成功: uid=742343904
 [2/6] 凭据就绪: raknet=42.186.165.232:10007 signaling=42.186.165.232:8899
-[3/6] ★ 房间创建成功 RoomID=824615
-[4/6] 房间可查询: HID=2889827552 SRV=8361 RoomUniqueID=3541695895718126
-[6/6] 请在网易客户端"本地联机"输入房间号 824615 加入
-[房主] NetherNet 监听中（NetworkID=11453984968413808426，房间号=123456），等待玩家加入 ...
-[房主] 房间 824615 存活（在线 0 人，累计 0 人，已运行 25s，重建 0 次）
+[3/6] ★ 房间创建成功 RoomID=123456
+[4/6] 房间可查询: HID=1000000001 SRV=10001 RoomUniqueID=1000000000000001
+[6/6] 请在网易客户端"本地联机"输入房间号 123456 加入
+[房主] NetherNet 监听中（NetworkID=10000000000000000001，房间号=123456），等待玩家加入 ...
+[房主] 房间 123456 存活（在线 0 人，累计 0 人，已运行 25s，重建 0 次）
 ```
 
 **房间号就是 `RoomID`**，也写在 `room.txt` / `room.json` 里，方便脚本读取。
@@ -169,7 +168,7 @@ NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的�
 ### 2. 玩家进服
 
 1. 玩家打开网易版 Minecraft → **「本地联机」**
-2. 选择「输入房间号」→ 填入网关打印的房间号（示例 `824615`）
+2. 选择「输入房间号」→ 填入网关打印的房间号（示例 `123456`）
 3. 进房后客户端会自动连接网关并开始加载你的服务器
 
 > 建议加 `-room-password "密码"`，否则任何人知道房间号都能进。
@@ -187,7 +186,7 @@ NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的�
 - **必须**给扩展设置真实地址（否则握手 hostname 为空，会在 `Geyser → 代理` 这一跳被静默掐断）：
 
   ```
-  -DGeyserNetease.ServerAddress=你的域名:端口      例如 be.4f4t.top:49780
+  -DGeyserNetease.ServerAddress=example.com:49780
   ```
 
 - `-target` 指向 **Geyser 的 RakNet 端口**（UDP，示例里的 `49780`）。
@@ -205,7 +204,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/netease-gateway
-ExecStart=/opt/netease-gateway/NeteaseBedrockGateway -u "4399账号" -p "密码" -room-name "我的服务器" -target be.4f4t.top:49780
+ExecStart=/opt/netease-gateway/NeteaseBedrockGateway -u "4399账号" -p "密码" -room-name "我的服务器" -target example.com:49780
 Restart=always
 RestartSec=10
 # 房间号写进 /opt/netease-gateway/room.txt
@@ -255,13 +254,13 @@ cat /opt/netease-gateway/room.txt         # 看当前房间号
 
 ```json
 {
-  "room_id": 824615,
-  "room_name": "debug-test",
-  "target": "服务器IP/域名:端口",
-  "host_nether_id": "11453984968413808426",
+  "room_id": 123456,
+  "room_name": "example-room",
+  "target": "example.com:49780",
+  "host_nether_id": "10000000000000000001",
   "status": "alive",
-  "created_at": "2026-10-06T22:36:23+08:00",
-  "updated_at": "2026-10-06T22:36:23+08:00",
+  "created_at": "2026-01-01T00:00:00+08:00",
+  "updated_at": "2026-01-01T00:00:00+08:00",
   "recreations": 0
 }
 ```
@@ -335,8 +334,8 @@ cat relay.log            # Windows: type relay.log
 go run ./cmd/diag/relaydecode relay.log
 
 # 3. 单独验证 Java 侧（不经过网易客户端）
-go run ./cmd/diag/javaprobe -addr be.4f4t.top:25565 -mode status
-go run ./cmd/diag/javaprobe -addr be.4f4t.top:25565 -mode login -name TestPlayer
+go run ./cmd/diag/javaprobe -addr example.com:25565 -mode status
+go run ./cmd/diag/javaprobe -addr example.com:25565 -mode login -name TestPlayer
 ```
 
 | 症状 | 先看哪里 | 多半是 |
@@ -407,7 +406,7 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 | `github.com/Yeah114/g79client`                  | 4399 登录 / 房间 API 客户端                     |
 
 > 这三个依赖以 **git submodule** 的形式放在 `third_party/` 下（见 `.gitmodules`），
-> 所以 `git clone` 之后要执行一次 `git submodule update --init --recursive` 才能编译（或 clone 时加 `--recurse-submodules`）。
+> 所以 `git clone` 之后要执行一次 `git submodule update --init --recursive` 才能编译（或 clone 时直接加 `--recursive`，见上）。
 > `go.mod` 用相对路径把它们接进来：`replace <模块路径> => ./third_party/<目录名>`。
 > `third_party/` 内代码版权与许可证归各自作者所有（submodule 只是引用，不改变许可）。
 

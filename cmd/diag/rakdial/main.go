@@ -1,4 +1,4 @@
-// rakdial 测试 Go raknet 客户端连接 Geyser 服务器（be.4f4t.top:49780）。
+// rakdial 测试 Go raknet 客户端连接 Geyser 服务器（example.com:49780）。
 package main
 
 import (
@@ -14,7 +14,7 @@ func main() {
 	defer cancel()
 
 	start := time.Now()
-	conn, err := raknet.DialContext(ctx, "be.4f4t.top:49780")
+	conn, err := raknet.DialContext(ctx, "example.com:49780")
 	elapsed := time.Since(start)
 	if err != nil {
 		fmt.Printf("raknet.Dial 失败: %v (耗时 %v)\n", err, elapsed)

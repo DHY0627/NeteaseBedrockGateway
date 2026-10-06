@@ -3,8 +3,8 @@
 //
 // 用法：
 //
-//	go run ./cmd/javaprobe -addr be.4f4t.top:25565 -mode status
-//	go run ./cmd/javaprobe -addr be.4f4t.top:25565 -mode login -name 锕钼铽镧锶
+//	go run ./cmd/javaprobe -addr example.com:25565 -mode status
+//	go run ./cmd/javaprobe -addr example.com:25565 -mode login -name 锕钼铽镧锶
 package main
 
 import (
@@ -25,7 +25,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "be.4f4t.top:25565", "Java 服务器地址")
+	addr := flag.String("addr", "example.com:25565", "Java 服务器地址")
 	mode := flag.String("mode", "status", "status | login")
 	name := flag.String("name", "TestPlayer", "登录名")
 	proto := flag.Int("protocol", 0, "协议版本（0=先用状态查询自动获取）")

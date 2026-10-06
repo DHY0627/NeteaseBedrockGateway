@@ -240,7 +240,7 @@ func acceptPlayers(ctx context.Context, listener *nethernet.Listener, target str
 //
 //	网易玩家（nethernet.Conn，承载 Minecraft 协议原始字节）
 //	    ↕  字节级双向透传
-//	目标服务器（be.4f4t.top:49780，RakNet + Minecraft）
+//	目标服务器（example.com:49780，RakNet + Minecraft）
 //
 // 玩家侧 nethernet.Conn 是可靠的 Minecraft 数据通道（与 nemc-tan-lobby-solver
 // 的 login.Dial 返回的连接同构），目标侧用 sandertv/go-raknet 建立 RakNet

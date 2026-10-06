@@ -1,4 +1,4 @@
-// rakdbg 调试 raknet 握手到 Geyser（be.4f4t.top:49780），用 raw 字节。
+// rakdbg 调试 raknet 握手到 Geyser（example.com:49780），用 raw 字节。
 package main
 
 import (
@@ -11,7 +11,7 @@ import (
 var magic = []byte{0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe, 0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78}
 
 func main() {
-	addr, _ := net.ResolveUDPAddr("udp", "be.4f4t.top:49780")
+	addr, _ := net.ResolveUDPAddr("udp", "example.com:49780")
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
 		fmt.Println("dial:", err)

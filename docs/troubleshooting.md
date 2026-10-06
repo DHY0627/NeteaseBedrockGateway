@@ -85,9 +85,9 @@ conn.sctp.OnDataChannelOpened(func(channel *webrtc.DataChannel) {
 在 Geyser 扩展里挂一个 `SessionListener` 逐包记录 Geyser↔Velocity（`-DGeyserNetease.Sniff=true`）：
 
 ```
-诊断: forwardHostname=true joinAddress="" remoteServer=127.0.1.1:8080 auth=OFFLINE
+诊断: forwardHostname=true joinAddress="" remoteServer=127.0.0.1:25565 auth=OFFLINE
       clientData.ServerAddress=":0"
-出→ ClientIntentionPacket(protocolVersion=776, hostname=, port=8080, intent=LOGIN)   ← hostname 空！
+出→ ClientIntentionPacket(protocolVersion=776, hostname=, port=25565, intent=LOGIN)   ← hostname 空！
 出→ ServerboundHelloPacket(username=..., profileId=...)
 == 已断开: reason=... key=disconnect.endOfStream, cause=null                        ← 一个字节都没回
 ```
@@ -126,7 +126,7 @@ conn.sctp.OnDataChannelOpened(func(channel *webrtc.DataChannel) {
 
 ```java
 private static final String FORCED_SERVER_ADDRESS =
-    System.getProperty("GeyserNetease.ServerAddress", "be.4f4t.top:49780");
+    System.getProperty("GeyserNetease.ServerAddress", "example.com:49780");
 
 // 若 clientData.ServerAddress 为空或以 ":" 开头 → 改写为 FORCED_SERVER_ADDRESS
 patchServerAddress(session.getClientData());
@@ -135,10 +135,10 @@ patchServerAddress(session.getClientData());
 修复后的同一份嗅探日志：
 
 ```
-出→ ClientIntentionPacket(protocolVersion=776, hostname=be.4f4t.top, port=8080, intent=LOGIN)
-出→ ServerboundHelloPacket(username=NE2058640069, ...)
+出→ ClientIntentionPacket(protocolVersion=776, hostname=example.com, port=25565, intent=LOGIN)
+出→ ServerboundHelloPacket(username=ExamplePlayer, ...)
 出→ ServerboundLoginAcknowledgedPacket
-入← ClientboundLoginFinishedPacket(profile=GameProfile{id=49795288-..., name=...})
+入← ClientboundLoginFinishedPacket(profile=GameProfile{id=00000000-..., name=...})
 入← ClientboundLoginPacket
 入← ClientboundLevelChunkWithLightPacket × 377      ← 世界数据正常下发，玩家进服
 ```
@@ -147,7 +147,7 @@ patchServerAddress(session.getClientData());
 
 | 假设 | 如何排除 |
 |---|---|
-| 中文用户名导致 Velocity 拒绝 | 把 java 侧登录名改成纯 ASCII（`NE2058640069`）后**现象完全一样** → 与名字无关 |
+| 中文用户名导致 Velocity 拒绝 | 把 java 侧登录名改成纯 ASCII（`ExamplePlayer`）后**现象完全一样** → 与名字无关 |
 | Velocity 装了会拦人的插件 | 服务器 `plugins/` 只有 Geyser |
 | 目标服务器/后端配置错 | 同配置下官方国际版客户端进服正常（Velocity 有完整 `has connected` 日志） |
 | 房间被回收 / 中转断开 | 同一时刻房间可查询、中转连接正常（网关日志有 `房间 xxx 存活`） |

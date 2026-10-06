@@ -19,7 +19,7 @@
 go run ./cmd/diag/deflateprobe docs/captures/r63.hex
 
 # 解析身份链结构
-go run ./cmd/diag/chaininfo docs/captures/login_aminuosi.hex
+go run ./cmd/diag/chaininfo docs/captures/login_<账号>.hex
 
 # 概览 pcap 里的 UDP 流
 go run ./cmd/diag/pcapsum docs/captures/cap.pcap

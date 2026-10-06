@@ -14,7 +14,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	netConn, err := raknet.DialContext(ctx, "be.4f4t.top:49780")
+	netConn, err := raknet.DialContext(ctx, "example.com:49780")
 	if err != nil {
 		fmt.Printf("raknet 失败: %v\n", err)
 		return

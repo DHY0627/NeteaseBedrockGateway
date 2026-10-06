@@ -1,4 +1,4 @@
-// fecheck 测试「补上 0xFE 帧头」假设：向 be.4f4t.top:49780 发送
+// fecheck 测试「补上 0xFE 帧头」假设：向 example.com:49780 发送
 // FE + 网易客户端首个消息（RequestNetworkSettings, 协议 860），
 // 观察 Geyser 是否返回正常响应而不是断开。
 package main
@@ -22,7 +22,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	conn, err := raknet.DialContext(ctx, "be.4f4t.top:49780")
+	conn, err := raknet.DialContext(ctx, "example.com:49780")
 	if err != nil {
 		fmt.Printf("dial 失败: %v\n", err)
 		return

@@ -45,14 +45,16 @@ jobs:
           CGO_ENABLED: '0'
         run: go build ./...
 
-      - name: 构建三个发布目标（不发布，只验证能过）
+      - name: 构建全部发布目标（不发布，只验证能过）
         env:
           CGO_ENABLED: '0'
         run: |
-          for target in windows/amd64 linux/amd64 linux/arm64; do
+          for target in windows/386 windows/amd64 windows/arm64 \
+                        linux/386 linux/amd64 linux/arm linux/arm64 \
+                        darwin/amd64 darwin/arm64; do
             goos="${target%%/*}"; goarch="${target##*/}"
             ext=""; [ "$goos" = "windows" ] && ext=".exe"
             echo "==> ${target}"
-            GOOS="$goos" GOARCH="$goarch" \
+            GOOS="$goos" GOARCH="$goarch" GOARM=7 \
               go build -trimpath -ldflags "-s -w" -o "/tmp/NeteaseBedrockGateway-${goos}-${goarch}${ext}" ./cmd/gateway
           done

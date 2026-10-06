@@ -24,9 +24,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Windows：x86(386) / x64(amd64) / ARM64
+          - { goos: windows, goarch: '386' }
           - { goos: windows, goarch: amd64 }
+          - { goos: windows, goarch: arm64 }
+          # Linux：x86(386) / x64(amd64) / ARM(arm) / ARM64
+          - { goos: linux,   goarch: '386' }
           - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm, goarm: '7' }
           - { goos: linux,   goarch: arm64 }
+          # macOS：Intel(x64) / Apple 芯片(ARM64)
           - { goos: darwin,  goarch: amd64 }
           - { goos: darwin,  goarch: arm64 }
 
@@ -59,11 +66,15 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
           CGO_ENABLED: '0'
         run: |
           ext=""
           [ "$GOOS" = "windows" ] && ext=".exe"
-          out="NeteaseBedrockGateway-${GOOS}-${GOARCH}${ext}"
+          # 32 位 ARM 带 GOARM 后缀，便于区分 softfloat/hardfloat
+          suffix="${GOARCH}"
+          [ -n "${GOARM:-}" ] && suffix="${GOARCH}v${GOARM}"
+          out="NeteaseBedrockGateway-${GOOS}-${suffix}${ext}"
           go build -trimpath -ldflags "-s -w" -o "dist/$out" ./cmd/gateway
           ls -lh "dist/"
 
@@ -128,31 +139,38 @@ jobs:
 
             按你的系统选择对应文件，解压/直接运行即可，**无需安装 Go 环境**：
 
-            | 系统 | 文件 |
-            |---|---|
-            | Windows 64 位 | `NeteaseBedrockGateway-windows-amd64.exe` |
-            | Linux x86_64 | `NeteaseBedrockGateway-linux-amd64` |
-            | Linux ARM64（如树莓派） | `NeteaseBedrockGateway-linux-arm64` |
-            | macOS Intel | `NeteaseBedrockGateway-darwin-amd64` |
-            | macOS Apple 芯片 | `NeteaseBedrockGateway-darwin-arm64` |
-            | 诊断工具（Linux） | `NeteaseBedrockGateway-diag-linux-amd64.tar.gz` |
+            | 系统 | 架构 | 文件 |
+            |---|---|---|
+            | Windows | x64（64 位） | `NeteaseBedrockGateway-windows-amd64.exe` |
+            | Windows | x86（32 位） | `NeteaseBedrockGateway-windows-386.exe` |
+            | Windows | ARM64 | `NeteaseBedrockGateway-windows-arm64.exe` |
+            | Linux | x64（64 位） | `NeteaseBedrockGateway-linux-amd64` |
+            | Linux | x86（32 位） | `NeteaseBedrockGateway-linux-386` |
+            | Linux | ARM64（如树莓派 4/5、服务器） | `NeteaseBedrockGateway-linux-arm64` |
+            | Linux | ARM 32 位（如树莓派 2/3、电视盒子） | `NeteaseBedrockGateway-linux-armv7` |
+            | macOS | Intel | `NeteaseBedrockGateway-darwin-amd64` |
+            | macOS | Apple 芯片 | `NeteaseBedrockGateway-darwin-arm64` |
+            | 诊断工具 | Linux x64 | `NeteaseBedrockGateway-diag-linux-amd64.tar.gz` |
+
+            > 分不清架构时：Windows 用「设置 → 系统 → 关于」看系统类型；Linux 执行 `uname -m`
+            > （`x86_64` → amd64，`aarch64` → arm64，`armv7l` → armv7）。
 
             ## 运行
 
             ```bash
             # Linux / macOS
             chmod +x NeteaseBedrockGateway-linux-amd64
-            ./NeteaseBedrockGateway-linux-amd64 -u "4399账号" -p "密码" -target example.com:49780
+            ./NeteaseBedrockGateway-linux-amd64 -u "4399账号" -p "密码" -target example.com:19132
             ```
 
             ```powershell
             # Windows
-            .\NeteaseBedrockGateway-windows-amd64.exe -u "4399账号" -p "密码" -target example.com:49780
+            .\NeteaseBedrockGateway-windows-amd64.exe -u "4399账号" -p "密码" -target example.com:19132
             ```
 
-            > `-target` 必须指向 **Geyser 的 RakNet（UDP）端口**。目标服还需要安装配套扩展
+            > `-target` 必须指向 **Geyser 的 RakNet（UDP）端口**（Geyser 默认 `19132`）。目标服还需要安装配套扩展
             > [GeyserNetease](https://github.com/DHY0627/GeyserNetease)，并设置
-            > `-DGeyserNetease.ServerAddress=你的域名:端口`。详见
+            > `-DGeyserNetease.ServerAddress=你的域名:19132`。详见
             > [README](https://github.com/DHY0627/NeteaseBedrockGateway#readme)。
 
             ## 校验

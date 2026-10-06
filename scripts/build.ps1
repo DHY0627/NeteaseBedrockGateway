@@ -1,12 +1,19 @@
 ﻿# 交叉编译 NeteaseBedrockGateway（Windows / Linux / macOS）
 #
 # 用法：
-#   .\scripts\build.ps1                          # 默认编 windows/amd64 + linux/amd64 + linux/arm64
-#   .\scripts\build.ps1 -Targets windows/amd64   # 只编一个目标
-#   .\scripts\build.ps1 -WithDiag                # 顺便编常用诊断工具
+#   .\scripts\build.ps1                              # 默认编全部 9 个发布目标
+#   .\scripts\build.ps1 -Targets windows/amd64       # 只编一个目标
+#   .\scripts\build.ps1 -Targets linux/amd64,linux/armv7
+#   .\scripts\build.ps1 -WithDiag                    # 顺便编常用诊断工具
+#
+# 目标写法：<os>/<arch>，32 位 ARM 用 armv7 表示（GOARM=7）
 param(
     [string]$OutDir = "dist",
-    [string[]]$Targets = @("windows/amd64", "linux/amd64", "linux/arm64"),
+    [string[]]$Targets = @(
+        "windows/386", "windows/amd64", "windows/arm64",
+        "linux/386",   "linux/amd64",   "linux/armv7", "linux/arm64",
+        "darwin/amd64", "darwin/arm64"
+    ),
     [switch]$WithDiag
 )
 
@@ -33,12 +40,20 @@ foreach ($target in $Targets) {
     $parts = $target.Split("/")
     $goos = $parts[0]
     $goarch = $parts[1]
+    $goarm = ""
+    # 允许写 armv7 / armv6 这种带 GOARM 的写法
+    if ($goarch -match '^armv(\d+)$') {
+        $goarm = $Matches[1]
+        $goarch = "arm"
+    }
     $ext = if ($goos -eq "windows") { ".exe" } else { "" }
-    $name = "NeteaseBedrockGateway-$goos-$goarch$ext"
+    $suffix = if ($goarm) { "$goarch" + "v" + $goarm } else { $goarch }
+    $name = "NeteaseBedrockGateway-$goos-$suffix$ext"
 
     $env:GOOS = $goos
     $env:GOARCH = $goarch
     $env:CGO_ENABLED = "0"
+    if ($goarm) { $env:GOARM = $goarm } else { Remove-Item Env:GOARM -ErrorAction SilentlyContinue }
 
     Write-Host "==> 编译 $target" -ForegroundColor Cyan
     go build -trimpath -ldflags "-s -w" -o (Join-Path $OutDir $name) ./cmd/gateway
@@ -50,6 +65,7 @@ if ($WithDiag) {
     Write-Host "==> 编译诊断工具（本机平台）" -ForegroundColor Cyan
     Remove-Item Env:GOOS -ErrorAction SilentlyContinue
     Remove-Item Env:GOARCH -ErrorAction SilentlyContinue
+    Remove-Item Env:GOARM -ErrorAction SilentlyContinue
     $ext = if ($IsWindows -or $env:OS -eq "Windows_NT") { ".exe" } else { "" }
     foreach ($tool in @("relaydecode", "javaprobe", "logindump", "chaininfo", "pcapsum", "fecheck")) {
         go build -trimpath -ldflags "-s -w" -o (Join-Path $OutDir "$tool$ext") "./cmd/diag/$tool"

@@ -70,7 +70,7 @@ func main() {
 	if *username == "" || *password == "" || *target == "" {
 		fmt.Fprintln(os.Stderr, "用法: NeteaseBedrockGateway -u 用户名 -p 密码 -target 服务器IP/域名:端口 [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔]")
 		if *username != "" && *password != "" && *target == "" {
-			fmt.Fprintln(os.Stderr, "错误: -target 必填（玩家流量转发目标，例如 -target 服务器IP/域名:49780）")
+			fmt.Fprintln(os.Stderr, "错误: -target 必填（玩家流量转发目标，例如 -target 服务器IP/域名:19132）")
 		}
 		flag.Usage()
 		os.Exit(2)
@@ -240,7 +240,7 @@ func acceptPlayers(ctx context.Context, listener *nethernet.Listener, target str
 //
 //	网易玩家（nethernet.Conn，承载 Minecraft 协议原始字节）
 //	    ↕  字节级双向透传
-//	目标服务器（example.com:49780，RakNet + Minecraft）
+//	目标服务器（example.com:19132，RakNet + Minecraft）
 //
 // 玩家侧 nethernet.Conn 是可靠的 Minecraft 数据通道（与 nemc-tan-lobby-solver
 // 的 login.Dial 返回的连接同构），目标侧用 sandertv/go-raknet 建立 RakNet

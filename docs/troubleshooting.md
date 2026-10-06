@@ -126,7 +126,7 @@ conn.sctp.OnDataChannelOpened(func(channel *webrtc.DataChannel) {
 
 ```java
 private static final String FORCED_SERVER_ADDRESS =
-    System.getProperty("GeyserNetease.ServerAddress", "example.com:49780");
+    System.getProperty("GeyserNetease.ServerAddress", "example.com:19132");
 
 // 若 clientData.ServerAddress 为空或以 ":" 开头 → 改写为 FORCED_SERVER_ADDRESS
 patchServerAddress(session.getClientData());

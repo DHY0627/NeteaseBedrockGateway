@@ -1,4 +1,4 @@
-// gordial 用 sandertv/go-raknet 测试连接 Geyser（example.com:49780）。
+// gordial 用 sandertv/go-raknet 测试连接 Geyser（example.com:19132）。
 package main
 
 import (
@@ -13,7 +13,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	start := time.Now()
-	conn, err := raknet.DialContext(ctx, "example.com:49780")
+	conn, err := raknet.DialContext(ctx, "example.com:19132")
 	if err != nil {
 		fmt.Printf("go-raknet Dial 失败: %v (耗时 %v)\n", err, time.Since(start))
 		return

@@ -62,7 +62,7 @@
 ```
         网易原版客户端                                      你的服务器
    ┌────────────────────────────────┐          ┌──────────────────────────────┐
-   │ 本地联机 → 输入房间号 123456   │          │   Geyser (UDP 49780)         │
+   │ 本地联机 → 输入房间号 123456   │          │   Geyser (UDP 19132)         │
    └───────────────┬────────────────┘          │     └── Velocity → Java 后端 │
                    │ ① 按房间号进房           └───────────────▲──────────────┘
                    ▼                                          │ ④ RakNet
@@ -92,14 +92,21 @@
 
 不想装 Go 的话，直接去 [**Releases**](https://github.com/DHY0627/NeteaseBedrockGateway/releases/latest) 下载对应平台的可执行文件，解压即用：
 
-| 系统 | 文件 |
-|---|---|
-| Windows 64 位 | `NeteaseBedrockGateway-windows-amd64.exe` |
-| Linux x86_64 | `NeteaseBedrockGateway-linux-amd64` |
-| Linux ARM64（如树莓派） | `NeteaseBedrockGateway-linux-arm64` |
-| macOS Intel | `NeteaseBedrockGateway-darwin-amd64` |
-| macOS Apple 芯片 | `NeteaseBedrockGateway-darwin-arm64` |
-| 诊断工具（Linux） | `NeteaseBedrockGateway-diag-linux-amd64.tar.gz` |
+| 系统 | 架构 | 文件 |
+|---|---|---|
+| Windows | x64（64 位） | `NeteaseBedrockGateway-windows-amd64.exe` |
+| Windows | x86（32 位） | `NeteaseBedrockGateway-windows-386.exe` |
+| Windows | ARM64 | `NeteaseBedrockGateway-windows-arm64.exe` |
+| Linux | x64（64 位） | `NeteaseBedrockGateway-linux-amd64` |
+| Linux | x86（32 位） | `NeteaseBedrockGateway-linux-386` |
+| Linux | ARM64（树莓派 4/5、ARM 服务器） | `NeteaseBedrockGateway-linux-arm64` |
+| Linux | ARM 32 位（树莓派 2/3、电视盒子） | `NeteaseBedrockGateway-linux-armv7` |
+| macOS | Intel | `NeteaseBedrockGateway-darwin-amd64` |
+| macOS | Apple 芯片 | `NeteaseBedrockGateway-darwin-arm64` |
+| 诊断工具 | Linux x64 | `NeteaseBedrockGateway-diag-linux-amd64.tar.gz` |
+
+> 分不清架构？Linux 执行 `uname -m`：`x86_64` → amd64、`aarch64` → arm64、`armv7l` → armv7、`i686` → 386。
+> Windows 看「设置 → 系统 → 关于 → 系统类型」。选错了会报「不是有效的 Win32 应用程序」或 `cannot execute binary file`。
 
 校验完整性：`sha256sum -c SHA256SUMS.txt`
 
@@ -165,8 +172,16 @@ Get-ChildItem .\cmd -Directory | ForEach-Object {
 
 | Workflow | 触发时机 | 做什么 |
 |---|---|---|
-| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | 每次 push 到 `main` / PR | 拉 submodule → `go vet ./...` → `go build ./...` → 试编三个发布目标（不产物） |
-| [`.github/workflows/release.yml`](.github/workflows/release.yml) | 推送 `v*` tag（或手动触发） | 五个平台并行编译 + 诊断工具 → 打包 → 生成 `SHA256SUMS.txt` → 发 GitHub Release |
+| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | 每次 push 到 `main` / PR | 拉 submodule → `go vet ./...` → `go build ./...` → 试编全部 9 个发布目标（只验证，不发布） |
+| [`.github/workflows/release.yml`](.github/workflows/release.yml) | 推送 `v*` tag（或手动触发） | 9 个平台并行编译 + 诊断工具 → 打包 → 生成 `SHA256SUMS.txt` → 发 GitHub Release |
+
+**发布矩阵（9 个目标）**：
+
+| GOOS | GOARCH | 产物后缀 |
+|---|---|---|
+| `windows` | `386` / `amd64` / `arm64` | `.exe` |
+| `linux` | `386` / `amd64` / `arm`（GOARM=7）/ `arm64` | 无 |
+| `darwin` | `amd64` / `arm64` | 无 |
 
 **发新版本**：
 
@@ -175,9 +190,24 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-推完 tag 后到 [Actions](https://github.com/DHY0627/NeteaseBedrockGateway/actions) 看进度，约 2–3 分钟出 Release。
+推完 tag 后到 [Actions](https://github.com/DHY0627/NeteaseBedrockGateway/actions) 看进度，约 3–5 分钟出 Release。
 
 **手动触发**（不建 tag 也能跑）：Actions → Release → `Run workflow` → 填一个 tag 名（如 `v1.0.0`）。
+
+**本地编全部 9 个目标**（不用等 Actions）：
+
+```powershell
+# Windows
+.\scripts\build.ps1
+```
+
+```bash
+# Linux / macOS
+./scripts/build.sh
+```
+
+两个脚本默认都编全部 9 个目标，也可以只编指定的：`.\scripts\build.ps1 -Targets linux/amd64,linux/armv7`
+或 `./scripts/build.sh linux/amd64 linux/armv7`（32 位 ARM 写成 `armv7`，脚本会自动转成 `GOARCH=arm GOARM=7`）。
 
 **自定义**：`release.yml` 的 `matrix.include` 就是目标平台列表，增删即可。
 诊断工具列表在 `release` job 的 `for tool in ...` 那行，缺了哪个加上去就行。
@@ -235,10 +265,10 @@ NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的�
 - **必须**给扩展设置真实地址（否则握手 hostname 为空，会在 `Geyser → 代理` 这一跳被静默掐断）：
 
   ```
-  -DGeyserNetease.ServerAddress=example.com:49780
+  -DGeyserNetease.ServerAddress=example.com:19132
   ```
 
-- `-target` 指向 **Geyser 的 RakNet 端口**（UDP，示例里的 `49780`）。
+- `-target` 指向 **Geyser 的 RakNet 端口**（UDP，Geyser 默认 `19132`）。
 
 ### 4. 常驻运行
 
@@ -253,7 +283,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/netease-gateway
-ExecStart=/opt/netease-gateway/NeteaseBedrockGateway -u "4399账号" -p "密码" -room-name "我的服务器" -target example.com:49780
+ExecStart=/opt/netease-gateway/NeteaseBedrockGateway -u "4399账号" -p "密码" -room-name "我的服务器" -target example.com:19132
 Restart=always
 RestartSec=10
 # 房间号写进 /opt/netease-gateway/room.txt
@@ -284,7 +314,7 @@ cat /opt/netease-gateway/room.txt         # 看当前房间号
 | `-room-name`      | `NeteaseBedrockGateway Host Room` | 房间名称（其实没用）                               |
 | `-capacity`       | `8`                               | 房间容量                                     |
 | `-room-password`  | 空                                 | 房间密码（留空 = 无密码）                           |
-| `-target`         | 空（**必填**）                         | 转发目标：**Geyser / BDS 的 RakNet 端口**，例如 `服务器IP/域名:49780` |
+| `-target`         | 空（**必填**）                         | 转发目标：**Geyser / BDS 的 RakNet 端口**，例如 `服务器IP/域名:19132` |
 | `-map-id`         | `0`                               | 房间 MapID（游戏版本标识）                         |
 | `-protocol-id`    | `42`                              | 房间 ProtocolID（默认 42 与原版房间一致）             |
 | `-level-id`       | 空                                 | 房间 LevelID（版本标识字符串）                      |
@@ -305,7 +335,7 @@ cat /opt/netease-gateway/room.txt         # 看当前房间号
 {
   "room_id": 123456,
   "room_name": "example-room",
-  "target": "example.com:49780",
+  "target": "example.com:19132",
   "host_nether_id": "10000000000000000001",
   "status": "alive",
   "created_at": "2026-01-01T00:00:00+08:00",

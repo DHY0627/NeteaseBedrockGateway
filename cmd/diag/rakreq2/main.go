@@ -40,7 +40,7 @@ func buildReq2(addr *net.UDPAddr, cookie []byte, mtu uint16, position string) []
 }
 
 func main() {
-	addr, _ := net.ResolveUDPAddr("udp", "example.com:49780")
+	addr, _ := net.ResolveUDPAddr("udp", "example.com:19132")
 	var cookie []byte
 	var mtu uint16
 

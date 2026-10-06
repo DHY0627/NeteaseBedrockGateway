@@ -25,7 +25,6 @@
   - [Windows](#windows)
   - [Linux / macOS](#linux--macos)
   - [交叉编译](#交叉编译)
-  - [自动化构建（GitHub Actions）](#自动化构建github-actions)
 - [使用方法](#使用方法)
   - [1. 启动网关](#1-启动网关)
   - [2. 玩家进服](#2-玩家进服)

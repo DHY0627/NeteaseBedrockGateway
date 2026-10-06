@@ -1,4 +1,4 @@
-# 交叉编译 NeteaseBedrockGateway（Windows / Linux / macOS）
+﻿# 交叉编译 NeteaseBedrockGateway（Windows / Linux / macOS）
 #
 # 用法：
 #   .\scripts\build.ps1                          # 默认编 windows/amd64 + linux/amd64 + linux/arm64
@@ -16,13 +16,10 @@ Set-Location $root
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 Write-Host "==> 检查 submodule（依赖在 third_party/ 下）" -ForegroundColor Cyan
-$missing = @()
-foreach ($line in (git submodule status)) {
-    if ($line.StartsWith("-")) { $missing += ($line -split ' ')[1] }
-}
+$missing = @(git submodule status | Where-Object { $_.StartsWith("-") } | ForEach-Object { ($_ -split ' ')[1] })
 if ($missing.Count -gt 0) {
     Write-Host "以下 submodule 还没拉取：" -ForegroundColor Red
-    $missing | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+    foreach ($m in $missing) { Write-Host "    $m" -ForegroundColor Red }
     Write-Host "请先执行：git submodule update --init --recursive" -ForegroundColor Yellow
     exit 1
 }

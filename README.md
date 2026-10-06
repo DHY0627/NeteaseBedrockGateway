@@ -9,7 +9,7 @@
 <p>
 <img alt="Go" src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go">
 <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey">
-<img alt="License" src="https://img.shields.io/badge/license-MIT-green">
+<img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
 </p>
 
 ---
@@ -36,30 +36,30 @@
 - [常见问题](#常见问题)
 - [已知限制](#已知限制)
 - [免责声明](#免责声明)
-- [许可与致谢](#许可与致谢)
+- [依赖与许可（Dependencies & Licenses）](#依赖与许可dependencies--licenses)
 
 ---
 
 ## 特性
 
-| 特性 | 说明 |
-|---|---|
-| 🎮 **程序开房** | 不需要一台真的开着游戏的手机/模拟器当房主，本程序就是房主 |
-| 📱 **原版客户端进服** | 玩家在网易客户端「本地联机」输入房间号即可，无需任何客户端改动 |
-| 🔀 **字节级转发** | 玩家 NetherNet（WebRTC/SCTP）数据通道上的 Bedrock 数据，原样透传到目标服务器的 RakNet 端口 |
-| 🛡️ **房间自动看护** | 中转连接断开、房间被网易回收时**自动重新开房**；房间号落盘到 `room.json` / `room.txt` |
-| ❤️ **保活与状态** | 周期性确认房间仍在，并打印在线人数 / 运行时长 / 重建次数 |
-| 👥 **多玩家** | 每个玩家一条独立转发链路，互不影响 |
-| 🧰 **自带诊断工具** | 33 个排查/逆向小工具（转发包解码、Java 协议探测、抓包分析……） |
+| 特性          | 说明                                                               |
+| ----------- | ---------------------------------------------------------------- |
+| **程序开房**    | 不需要一台真的开着游戏的手机/模拟器当房主，本程序就是房主                                    |
+| **原版客户端进服** | 玩家在网易客户端「本地联机」输入房间号即可，无需任何客户端改动                                  |
+| **字节级转发**   | 玩家 NetherNet（WebRTC/SCTP）数据通道上的 Bedrock 数据，原样透传到目标服务器的 RakNet 端口 |
+| **房间自动看护**  | 中转连接断开、房间被网易回收时**自动重新开房**；房间号落盘到 `room.json` / `room.txt`        |
+| **保活与状态**   | 周期性确认房间仍在，并打印在线人数 / 运行时长 / 重建次数                                  |
+| **多玩家**     | 每个玩家一条独立转发链路，互不影响                                                |
+|  **自带诊断工具** | 33 个排查/逆向小工具（转发包解码、Java 协议探测、抓包分析……）                             |
 
 ---
 
 ## 工作原理
 
 ```
-        网易原版客户端（手机 / 模拟器）                    你的服务器
+        网易原版客户端                                      你的服务器
    ┌────────────────────────────────┐          ┌──────────────────────────────┐
-   │ 本地联机 → 输入房间号 824615   │          │   Geyser (UDP 49780)         │
+   │ 本地联机 → 输入房间号 824615   │          │   Geyser (UDP 端口 )         │
    └───────────────┬────────────────┘          │     └── Velocity → Java 后端 │
                    │ ① 按房间号进房           └───────────────▲──────────────┘
                    ▼                                          │ ④ RakNet
@@ -68,7 +68,7 @@
    └───────────────┬────────────────┘          ┌──────────────┴───────────────┐
                    │ ② NetherNet（WebRTC）      │  本程序 NeteaseBedrockGateway│
                    ▼                            │  ├ 4399 登录 + x19 认证       │
-   ┌────────────────────────────────────────────┤  ├ TanLobby 开房（拿到房间号）│
+   ┌────────────────────────────────────────────┤  ├ TanLobby 开房            │
    │ ③ 玩家 ↔ 网关：SCTP 数据通道               │  ├ TanNotifyServerReady 上报  │
    │    [分段数][Minecraft 批次]                │  └ 字节级双向透传             │
    └────────────────────────────────────────────┴──────────────────────────────┘
@@ -85,153 +85,16 @@
 > 逆向细节与报文格式见 [docs/troubleshooting.md](docs/troubleshooting.md)。
 
 ---
-
-## 编译前置：本仓库不能直接 `go build`
-
-> ⚠️ **必读** —— 不准备依赖就一定编译不过。
-
-先说实话：**`git clone` 之后直接编译会失败**。本项目依赖三个**不在本仓库里**的 Go 模块，它们在 `go.mod` 中通过本地 `replace` 引入：
-
-| 模块 | 用途 | 是否公开可得 |
-|---|---|---|
-| `github.com/Happy2018new/nemc-tan-lobby-solver` | 网易 TanLobby / NetherNet 协议实现 | ❌ 上游未公开发布；需自备一份并**打补丁**（见下） |
-| `github.com/sandertv/go-raknet`（fork） | RakNet 客户端，协议版本 **8**（网易用的版本） | ✅ 上游公开；fork 只需改 **1 行**（见下） |
-| `github.com/Yeah114/g79client` | 4399 登录 API 客户端 | ❌ 未公开；需自备 |
-
-直接编译会看到这类报错（属预期，不是环境问题）：
-
-```
-go: github.com/Happy2018new/nemc-tan-lobby-solver@v0.0.0-...: replacement directory ../nemc-tan-lobby-solver does not exist
-missing go.sum entry for module providing package github.com/Yeah114/g79client
-```
-
-所以请**先准备依赖，再编译**。三种方式任选其一：
-
----
-
-### 方案 A：把依赖放在同一个父目录（默认方式，最省事）
-
-`go.mod` 里已经写好相对路径 `replace`，只要目录长这样即可：
-
-```
-<父目录>/
-├── NeteaseBedrockGateway/          ← 本仓库
-├── nemc-tan-lobby-solver/          ← ★ 需要打补丁
-├── go-raknet-netease/              ← sandertv/go-raknet fork（协议版本 8）
-└── FunAuth/
-    └── modules/
-        └── g79client/              ← 4399 登录客户端
-```
-
-```go
-// go.mod（已配置好，目录不同就改这三行）
-replace github.com/Yeah114/g79client                   => ../FunAuth/modules/g79client
-replace github.com/Happy2018new/nemc-tan-lobby-solver  => ../nemc-tan-lobby-solver
-replace github.com/sandertv/go-raknet                  => ../go-raknet-netease
-```
-
-#### A-1. `go-raknet-netease`：fork 上游并改 1 行
-
-```bash
-git clone https://github.com/sandertv/go-raknet.git go-raknet-netease
-cd go-raknet-netease
-git checkout v1.15.1
-# 编辑 conn.go：把 protocolVersion 由 11 改成 8
-```
-
-```go
-// conn.go 第 24 行附近
-// protocolVersion is the current RakNet protocol version. This is Minecraft
-// specific. 修改为 8：网易客户端（GeyserNetease）要求 RakNet 协议版本 8
-// 才会走网易处理路径（NETEASE_RAKNET）。
-protocolVersion byte = 8
-```
-
-> 与上游 v1.15.1 的**唯一**差异就是这一行。
-
-#### A-2. `nemc-tan-lobby-solver`：自备源码 + 打补丁（**必须**）
-
-上游没有公开发布这个模块，因此你需要自己拿一份（作者提供 / 你已有的副本），然后打上下面这个补丁。
-**不打补丁的症状**：客户端显示「已连接」但网关一个字节都收不到，90 秒后超时，`relay.log` 一直不生成。
-
-| 文件 | 改动 |
-|---|---|
-| `core/nethernet/conn.go` | 新增 `bindChannelHandlers()`（幂等绑定收发处理器），`handleTransports()` 改为调用它 |
-| `core/nethernet/listener.go` | `OnDataChannelOpened` 拿到通道后**立刻** `conn.bindChannelHandlers(channel)`，不要等两个通道都齐 |
-| `core/nethernet/dial.go` | 创建 `ReliableDataChannel` / `UnreliableDataChannel` 后各调用一次 `conn.bindChannelHandlers(...)` |
-
-原因与完整代码片段见 [**docs/troubleshooting.md → 根因 ①**](docs/troubleshooting.md#根因--nethernet-库丢掉客户端的第一个-bedrock-包)。
-
-#### A-3. `g79client`：自备源码
-
-`D:\git\FunAuth\modules\g79client`（或你自己的副本）放到上面树里的位置即可；它是 4399 登录 API 的 Go 客户端。
-
-#### A-4. 验证依赖就位
-
-```bash
-go list -m all        # 能列出全部模块 = replace 目标都存在
-# 或直接编译（见下一节），失败时脚本会给出缺失提示
-```
-
----
-
-### 方案 B：把 `replace` 换成你自己的仓库地址
-
-把三个依赖推到你自己的 GitHub 仓库（或公开发布 fork），然后：
-
-```go
-// go.mod
-replace github.com/Happy2018new/nemc-tan-lobby-solver => github.com/你的账号/nemc-tan-lobby-solver v0.0.0-20260101000000-abcdef123456
-replace github.com/sandertv/go-raknet                 => github.com/你的账号/go-raknet-netease v1.15.1
-replace github.com/Yeah114/g79client                  => github.com/你的账号/g79client v0.0.0-20260101000000-abcdef123456
-```
-
-之后 `go mod tidy` 可正常拉取，仓库对外也就「能直接编译」了。
-
----
-
-### 方案 C：vendor（想让自己或别人**开箱可编译**就选它）
-
-```bash
-# 前提：先按方案 A 把三个依赖放好
-go mod vendor
-git add vendor && git commit -m "chore: vendor dependencies"
-```
-
-之后任何人（含 CI）：
-
-```bash
-go build -mod=vendor -o NeteaseBedrockGateway ./cmd/gateway
-```
-
-注意：
-- 需要把 `.gitignore` 里的 `vendor/` 一行删掉，否则不会入库；
-- 三个依赖各自的 LICENSE / 来源说明要一并保留（`vendor/` 内会带上部分，建议在 README「致谢」里注明）；
-- vendor 之后 `go.mod` 的 `replace` 仍指向本地路径也没关系，构建会走 `vendor/`。
-
----
-
 ## 编译
 
 **要求**：Go **1.25+**（`go.mod` 声明 `go 1.25`）、**无需 CGO**（全平台可静态构建）。
-**第 0 步**：先按上一节准备好依赖，否则编译必然失败。
 
-```bash
-# 一键检查依赖 + 交叉编译（Windows）
-.\scripts\build.ps1
-
-# 一键检查依赖 + 交叉编译（Linux/macOS）
-./scripts/build.sh
-```
-
-脚本会先跑 `go list -m all` 做依赖预检，缺失时直接提示「请先按 README『依赖准备』……」并退出。
-
+> 三个外部依赖已随仓库 `vendor/` 提交，**clone 下来直接编译即可**，不需要额外准备模块（也不需要联网拉依赖）。
 ### Windows
 
 ```powershell
-git clone https://github.com/<你的账号>/NeteaseBedrockGateway.git
+git clone https://github.com/DHY0627/NeteaseBedrockGateway.git
 cd NeteaseBedrockGateway
-# ← 此处先准备依赖（见上一节）
 
 go build -o NeteaseBedrockGateway.exe ./cmd/gateway
 
@@ -239,36 +102,20 @@ go build -o NeteaseBedrockGateway.exe ./cmd/gateway
 go build -o bin/relaydecode.exe ./cmd/diag/relaydecode
 go build -o bin/javaprobe.exe   ./cmd/diag/javaprobe
 
-.\NeteaseBedrockGateway.exe -u "4399账号" -p "密码" -target be.4f4t.top:49780
+.\NeteaseBedrockGateway.exe -u "4399账号" -p "密码" -target 服务器IP/域名:端口
 ```
 
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/<你的账号>/NeteaseBedrockGateway.git
+git clone https://github.com/DHY0627/NeteaseBedrockGateway.git
 cd NeteaseBedrockGateway
-# ← 此处先准备依赖（见上一节）
 
 go build -o NeteaseBedrockGateway ./cmd/gateway
 chmod +x NeteaseBedrockGateway
 
-./NeteaseBedrockGateway -u "4399账号" -p "密码" -target be.4f4t.top:49780
+./NeteaseBedrockGateway -u "4399账号" -p "密码" -target 服务器IP/域名:端口
 ```
-
-### 交叉编译
-
-```bash
-# 在 Linux/macOS 上编 Windows 版
-GOOS=windows GOARCH=amd64 go build -o NeteaseBedrockGateway.exe ./cmd/gateway
-
-# 在 Windows PowerShell 上编 Linux 版
-$env:GOOS="linux"; $env:GOARCH="amd64"
-go build -o NeteaseBedrockGateway ./cmd/gateway
-```
-
-> 常见目标：`linux/amd64`、`linux/arm64`（树莓派 / Orange Pi 等）、`windows/amd64`。
-> 用 `scripts/build.ps1` / `scripts/build.sh` 可以一次出这三个平台的精简产物（`-trimpath -ldflags "-s -w"`）。
-
 ### 全部组件一起编译（可选）
 
 ```bash
@@ -285,26 +132,26 @@ Get-ChildItem .\cmd -Directory | ForEach-Object {
 
 ## 使用方法
 
-### 1. 启动网关
+### 1. 启动网关（名称设置其实没用）
 
 ```bash
 # Windows
-NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的服务器" -target be.4f4t.top:49780
+NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的服务器" -target 服务器IP/域名:端口
 
 # Linux
-./NeteaseBedrockGateway -u "房主4399账号" -p "密码" -room-name "我的服务器" -target be.4f4t.top:49780
+./NeteaseBedrockGateway -u "房主4399账号" -p "密码" -room-name "我的服务器" -target 服务器IP/域名:端口
 ```
 
 启动成功后日志：
 
 ```
-[房主] 目标服务器: be.4f4t.top:49780，房间信息落盘: room.json，存活检查间隔: 25s
+[房主] 目标服务器: 服务器IP/域名:端口，房间信息落盘: room.json，存活检查间隔: 25s
 [1/6] 认证成功: uid=742343904
 [2/6] 凭据就绪: raknet=42.186.165.232:10007 signaling=42.186.165.232:8899
 [3/6] ★ 房间创建成功 RoomID=824615
 [4/6] 房间可查询: HID=2889827552 SRV=8361 RoomUniqueID=3541695895718126
 [6/6] 请在网易客户端"本地联机"输入房间号 824615 加入
-[房主] NetherNet 监听中（NetworkID=11453984968413808426，房间号=824615），等待玩家加入 ...
+[房主] NetherNet 监听中（NetworkID=11453984968413808426，房间号=123456），等待玩家加入 ...
 [房主] 房间 824615 存活（在线 0 人，累计 0 人，已运行 25s，重建 0 次）
 ```
 
@@ -373,21 +220,21 @@ cat /opt/netease-gateway/room.txt         # 看当前房间号
 
 ## 命令行参数
 
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `-u` | — | 4399 用户名（**房主账号**，必填） |
-| `-p` | — | 4399 密码（必填） |
-| `-room-name` | `NeteaseBedrockGateway Host Room` | 房间名称（玩家在房间列表里看到） |
-| `-capacity` | `8` | 房间容量 |
-| `-room-password` | 空 | 房间密码（留空 = 无密码） |
-| `-target` | `be.4f4t.top:49780` | 转发目标：**Geyser / BDS 的 RakNet 端口** |
-| `-map-id` | `0` | 房间 MapID（游戏版本标识） |
-| `-protocol-id` | `42` | 房间 ProtocolID（默认 42 与原版房间一致） |
-| `-level-id` | 空 | 房间 LevelID（版本标识字符串） |
-| `-game-type` | `0` | 房间 GameType |
-| `-version-string` | `1.21.120.0` | 房间游戏版本字符串（玩家进房时校验） |
-| `-room-file` | `room.json` | 房间信息落盘文件；同时写同名 `.txt`（只存房间号）。空字符串 = 不落盘 |
-| `-keepalive` | `25s` | 房间存活检查间隔；`0` = 关闭。连续 3 次查不到即判定房间被回收并自动重建 |
+| 参数                | 默认值                               | 说明                                       |
+| ----------------- | --------------------------------- | ---------------------------------------- |
+| `-u`              | —                                 | 4399 用户名（**房主账号**，必填）                    |
+| `-p`              | —                                 | 4399 密码（必填）                              |
+| `-room-name`      | `NeteaseBedrockGateway Host Room` | 房间名称（其实没用）                               |
+| `-capacity`       | `8`                               | 房间容量                                     |
+| `-room-password`  | 空                                 | 房间密码（留空 = 无密码）                           |
+| `-target`         | 空（**必填**）                         | 转发目标：**Geyser / BDS 的 RakNet 端口**，例如 `服务器IP/域名:49780` |
+| `-map-id`         | `0`                               | 房间 MapID（游戏版本标识）                         |
+| `-protocol-id`    | `42`                              | 房间 ProtocolID（默认 42 与原版房间一致）             |
+| `-level-id`       | 空                                 | 房间 LevelID（版本标识字符串）                      |
+| `-game-type`      | `0`                               | 房间 GameType                              |
+| `-version-string` | `1.21.120.0`                      | 房间游戏版本字符串（玩家进房时校验）                       |
+| `-room-file`      | `room.json`                       | 房间信息落盘文件；同时写同名 `.txt`（只存房间号）。空字符串 = 不落盘  |
+| `-keepalive`      | `25s`                             | 房间存活检查间隔；`0` = 关闭。连续 3 次查不到即判定房间被回收并自动重建 |
 
 ---
 
@@ -401,7 +248,7 @@ cat /opt/netease-gateway/room.txt         # 看当前房间号
 {
   "room_id": 824615,
   "room_name": "debug-test",
-  "target": "be.4f4t.top:49780",
+  "target": "服务器IP/域名:端口",
   "host_nether_id": "11453984968413808426",
   "status": "alive",
   "created_at": "2026-10-06T22:36:23+08:00",
@@ -432,9 +279,11 @@ NeteaseBedrockGateway/
 ├── docs/
 │   ├── troubleshooting.md    两个「静默失败」的完整排查记录 + 排查手法
 │   └── captures/             抓包与 hex 证据（含账号 token，**默认不入库**）
+├── images/                   开发者名单用的图片
+├── vendor/                   已 vendor 的三个外部依赖（clone 后可直接编译）
 ├── room.json / room.txt      运行时房间状态（不入库）
 ├── host.log / relay.log      运行时日志与转发包记录（不入库）
-├── README.md / LICENSE / .gitignore
+├── README.md / LICENSE / .gitignore / .gitattributes
 └── go.mod / go.sum
 ```
 
@@ -537,11 +386,55 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 
 ---
 
-## 许可与致谢
+## 依赖与许可（Dependencies & Licenses）
 
-- 本项目：[MIT](LICENSE)
-- 协议实现：[Happy2018new/nemc-tan-lobby-solver](https://github.com/Happy2018new/nemc-tan-lobby-solver)（本项目对其 `core/nethernet` 打了首包丢失补丁）
-- RakNet fork：`sandertv/go-raknet`（网易 RakNet 协议版本 8）
-- 4399 登录：[DHY0627/4399X19Login](https://github.com/DHY0627/4399X19Login)（MIT，见 `internal/wplauncher`）
-- 基岩版协议：[GeyserMC/Geyser](https://github.com/GeyserMC/Geyser) 与配套扩展 [GeyserNetease](../GeyserNetease)
-- 思路参考：[Koud-Wind/Netease-minecraft-LAN-connects-to-Server](https://github.com/Koud-Wind/Netease-minecraft-LAN-connects-to-Server)（Java 版同思路）
+### 运行时依赖（三个外部模块）
+
+| 模块                                              | 用途                                       |
+| ----------------------------------------------- | ---------------------------------------- |
+| `github.com/Happy2018new/nemc-tan-lobby-solver` | 网易 TanLobby / NetherNet（WebRTC/SCTP）协议实现 |
+| `github.com/sandertv/go-raknet`（fork）           | RakNet 客户端（连 Geyser / BDS）               |
+| `github.com/Yeah114/g79client`                  | 4399 登录 / 房间 API 客户端                     |
+
+> 这三个依赖已随仓库 **`vendor/`** 一起提交（`go mod vendor` 的结果），所以 `git clone` 之后**无需另行准备**，直接 `go build` 即可编译。
+> `vendor/` 内代码版权与许可证归各自作者所有（`go mod vendor` 只做复制，不改变许可）。
+
+### 间接依赖（由 `go.sum` / `go mod vendor` 自动带入）
+
+| 分类          | 模块                                                                                                                                                                                                                    | 许可证                           |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| WebRTC / 网络 | `pion/dtls/v3`、`pion/ice/v4`、`pion/stun/v3`、`pion/turn/v4`、`pion/mdns/v2`、`pion/srtp/v3`、`pion/rtp`、`pion/rtcp`、`pion/sdp/v3`、`pion/transport/v3`、`pion/interceptor`、`pion/randutil`、`pion/logging`、`coder/websocket` | MIT                           |
+| 加密 / 压缩     | `database64128/chacha8-go`、`go-jose/go-jose/v3`、`klauspost/compress`、`golang/snappy`                                                                                                                                  | 各自仓库为准（多为 MIT/BSD/Apache-2.0） |
+| 工具库         | `google/uuid`、`muhammadmuzzammil1998/jsonc`、`ugorji/go/codec`、`df-mc/atomic`、`go-gl/mathgl`、`wlynxg/anet`                                                                                                             | 各自仓库为准                        |
+| 标准库扩展       | `golang.org/x/crypto`、`golang.org/x/net`、`golang.org/x/sys`、`golang.org/x/text`                                                                                                                                       | BSD-3-Clause                  |
+
+> 完整列表（含版本与哈希）：`go.mod`、`go.sum`；执行 `go mod vendor` 后还会生成 `vendor/modules.txt`。
+
+### 内嵌的第三方代码
+
+| 位置 | 来源 | 许可证 |
+|---|---|---|
+| `internal/wplauncher/` | [DHY0627/4399X19Login](https://github.com/DHY0627/4399X19Login) | MIT（原文保留在 `internal/wplauncher/LICENSE`） |
+| `tools/frida/` | 本项目自写的逆向脚本 | 同本项目 |
+
+### 思路与实现参考
+
+- [Koud-Wind/Netease-minecraft-LAN-connects-to-Server](https://github.com/Koud-Wind/Netease-minecraft-LAN-connects-to-Server)：Java 版「房主开房 + 引流到服务器」同思路
+- [GeyserMC/Geyser](https://github.com/GeyserMC/Geyser)、配套扩展 [GeyserNetease](../GeyserNetease)
+- ProtoHax（`dev.sora.relay`）：中继 / 中间层实现参考
+
+### 许可证说明
+
+1. **本项目以 [AGPL-3.0](LICENSE) 发布。**
+2. `internal/wplauncher/`（来自 DHY0627/4399X19Login）是 **MIT**，与 AGPL-3.0 **兼容**：它保留自己的许可证原文，本项目的 AGPL 覆盖其余部分。
+3. 仅本机自用不涉及分发条款，但仍建议知悉以上内容。以上为工程视角的提醒，**不构成法律意见**。
+
+
+### 本项目许可摘要
+
+- 主许可证：**GNU Affero General Public License v3.0**（[LICENSE](LICENSE)）
+- 内嵌第三方：`internal/wplauncher/` 保留其原始 **MIT** 许可证
+- 由于是 AGPL：**如果你把它作为网络服务提供给别人使用，需要按 AGPL 第 13 条向使用者提供完整源码**
+# 开发者名单
+## 本项目(不包括依赖)都是由以下一位开发者开发，所有代码都是他写的
+![Deepseek Hardness|402](./images/coder.png)

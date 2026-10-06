@@ -1,17 +1,16 @@
 # docs/captures —— 抓包与 hex 证据
 
-这个目录存放排错期间留下的原始证据，**默认不入库**（见根目录 `.gitignore`：`*.pcap` / `*.hex` / `docs/captures/*`），
-因为其中的 `login_*.hex`、`*.pcap` **包含真实网易账号的身份链/JWT/token**。
+这个目录存放排错期间留下的原始证据，**不要上传到任何地方**
 
 ## 内容
 
-| 文件 | 说明 |
-|---|---|
-| `cap.pcap` / `full.pcap` / `lan.pcap` / `trig.pcap` / `host.pcap` / `self.pcap` | 模拟器/本机抓包：网易本地联机（RakNet + NetherNet）与握手过程 |
-| `login_*.hex` | 玩家 `Login` 包（解压后批次）样本：真实客户端、被改写版、伪造链版等 |
-| `handshake*.hex` | Geyser `ServerToClientHandshake` 原始字节 |
-| `msg*.hex` | TanLobby / NetherNet 单条消息样本 |
-| `r26.hex` / `r63.hex` / `resp*.hex` / `realhs.hex` | 真实房主/服务器的响应样本（NetworkSettingsResponse、ResourcePackStack 等） |
+| 文件                                                                              | 说明                                                         |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `cap.pcap` / `full.pcap` / `lan.pcap` / `trig.pcap` / `host.pcap` / `self.pcap` | 模拟器/本机抓包：网易本地联机（RakNet + NetherNet）与握手过程                   |
+| `login_*.hex`                                                                   | 玩家 `Login` 包（解压后批次）样本：真实客户端、被改写版、伪造链版等                     |
+| `handshake*.hex`                                                                | Geyser `ServerToClientHandshake` 原始字节                      |
+| `msg*.hex`                                                                      | TanLobby / NetherNet 单条消息样本                                |
+| `r26.hex` / `r63.hex` / `resp*.hex` / `realhs.hex`                              | 真实房主/服务器的响应样本（NetworkSettingsResponse、ResourcePackStack 等） |
 
 ## 使用
 

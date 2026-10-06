@@ -54,10 +54,10 @@ func main() {
 	var (
 		username     = flag.String("u", "", "4399 用户名")
 		password     = flag.String("p", "", "4399 密码")
-		roomName     = flag.String("room-name", "NeteaseBedrockGateway", "房间名称")
+		roomName     = flag.String("room-name", "NeteaseBedrockGateway Host Room", "房间名称")
 		roomCapacity = flag.Uint("capacity", 8, "房间容量")
 		roomPassword = flag.String("room-password", "", "房间密码（可留空）")
-		target       = flag.String("target", "be.4f4t.top:49780", "目标服务器地址（玩家流量转发到这里）")
+		target       = flag.String("target", "", "目标服务器地址（Geyser/BDS 的 RakNet 端口，必填，例如 服务器IP/域名:端口）")
 		mapID        = flag.Uint64("map-id", 0, "房间 MapID（游戏版本标识）")
 		protocolID   = flag.Uint("protocol-id", 42, "房间 ProtocolID（默认 42 匹配真实房间）")
 		levelID      = flag.String("level-id", "", "房间 LevelID（版本标识字符串）")
@@ -67,12 +67,14 @@ func main() {
 		keepalive    = flag.Duration("keepalive", 25*time.Second, "房间存活检查间隔（0=关闭；连续 3 次查不到即自动重建房间）")
 	)
 	flag.Parse()
-	if *username == "" || *password == "" {
-		fmt.Fprintln(os.Stderr, "用法: host -u 用户名 -p 密码 [-room-name 名称] [-capacity 容量] [-room-password 密码] [-target 目标服务器] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔]")
+	if *username == "" || *password == "" || *target == "" {
+		fmt.Fprintln(os.Stderr, "用法: host -u 用户名 -p 密码 -target 服务器IP/域名:端口 [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔]")
+		if *username != "" && *password != "" && *target == "" {
+			fmt.Fprintln(os.Stderr, "错误: -target 必填（玩家流量转发目标，例如 -target 服务器IP/域名:49780）")
+		}
 		flag.Usage()
 		os.Exit(2)
 	}
-	_ = target
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

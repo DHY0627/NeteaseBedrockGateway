@@ -1,0 +1,25 @@
+package g79client
+
+const (
+	g79AndroidStep       = "695616851"
+	g79AndroidStep2      = "2146985406"
+	g79LibraryHash       = "815873bdd82cb7a4ce422da361f7d60d"
+	g79SignatureHash     = "2b3e7ca013bb30a74d822579860c042b"
+	g79BaseMCPHash       = ""
+	g79AndroidMessageTag = "dashen_cloudgame"
+)
+/*
+3.6.5.281774
+59cc563ed3c6430aff44500cd3f9e525
+3.6.18.283127
+22c622f4245a37ec3f1012a5325ddc25
+2b3e7ca013bb30a74d822579860c042b
+facb8049-0188-45b5-a0e5-8f149c0c1c91
+
+3.6.5.281774
+815873bdd82cb7a4ce422da361f7d60d
+3.6.18.283127
+22c622f4245a37ec3f1012a5325ddc25
+2b3e7ca013bb30a74d822579860c042b
+8888777a-03ff-4075-a3f3-e30363cc763b
+*/

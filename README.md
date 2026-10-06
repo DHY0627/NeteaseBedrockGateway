@@ -10,6 +10,8 @@
 <img alt="Go" src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go">
 <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey">
 <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
+<a href="https://github.com/DHY0627/NeteaseBedrockGateway/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/DHY0627/NeteaseBedrockGateway/actions/workflows/ci.yml/badge.svg"></a>
+<a href="https://github.com/DHY0627/NeteaseBedrockGateway/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/DHY0627/NeteaseBedrockGateway?include_prereleases&label=release"></a>
 </p>
 
 ---
@@ -18,10 +20,12 @@
 
 - [特性](#特性)
 - [工作原理](#工作原理)
+- [下载现成程序（免编译）](#下载现成程序免编译)
 - [编译](#编译)
   - [Windows](#windows)
   - [Linux / macOS](#linux--macos)
   - [交叉编译](#交叉编译)
+  - [自动化构建（GitHub Actions）](#自动化构建github-actions)
 - [使用方法](#使用方法)
   - [1. 启动网关](#1-启动网关)
   - [2. 玩家进服](#2-玩家进服)
@@ -84,6 +88,25 @@
 > 逆向细节与报文格式见 [docs/troubleshooting.md](docs/troubleshooting.md)。
 
 ---
+## 下载现成程序（免编译）
+
+不想装 Go 的话，直接去 [**Releases**](https://github.com/DHY0627/NeteaseBedrockGateway/releases/latest) 下载对应平台的可执行文件，解压即用：
+
+| 系统 | 文件 |
+|---|---|
+| Windows 64 位 | `NeteaseBedrockGateway-windows-amd64.exe` |
+| Linux x86_64 | `NeteaseBedrockGateway-linux-amd64` |
+| Linux ARM64（如树莓派） | `NeteaseBedrockGateway-linux-arm64` |
+| macOS Intel | `NeteaseBedrockGateway-darwin-amd64` |
+| macOS Apple 芯片 | `NeteaseBedrockGateway-darwin-arm64` |
+| 诊断工具（Linux） | `NeteaseBedrockGateway-diag-linux-amd64.tar.gz` |
+
+校验完整性：`sha256sum -c SHA256SUMS.txt`
+
+> 这些文件由 [GitHub Actions](.github/workflows/release.yml) 在打 tag 时自动构建，源码与产物一一对应。
+
+---
+
 ## 编译
 
 **要求**：Go **1.25+**（`go.mod` 声明 `go 1.25`）、**无需 CGO**（全平台可静态构建）、**git**。
@@ -135,6 +158,32 @@ Get-ChildItem .\cmd -Directory | ForEach-Object {
   go build -o "bin\$($_.Name).exe" "./cmd/$($_.Name)"
 }
 ```
+
+### 自动化构建（GitHub Actions）
+
+仓库里有两个 workflow：
+
+| Workflow | 触发时机 | 做什么 |
+|---|---|---|
+| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | 每次 push 到 `main` / PR | 拉 submodule → `go vet ./...` → `go build ./...` → 试编三个发布目标（不产物） |
+| [`.github/workflows/release.yml`](.github/workflows/release.yml) | 推送 `v*` tag（或手动触发） | 五个平台并行编译 + 诊断工具 → 打包 → 生成 `SHA256SUMS.txt` → 发 GitHub Release |
+
+**发新版本**：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+推完 tag 后到 [Actions](https://github.com/DHY0627/NeteaseBedrockGateway/actions) 看进度，约 2–3 分钟出 Release。
+
+**手动触发**（不建 tag 也能跑）：Actions → Release → `Run workflow` → 填一个 tag 名（如 `v1.0.0`）。
+
+**自定义**：`release.yml` 的 `matrix.include` 就是目标平台列表，增删即可。
+诊断工具列表在 `release` job 的 `for tool in ...` 那行，缺了哪个加上去就行。
+
+> ⚠️ workflow 里 **`submodules: recursive` 不能删**。依赖在 `third_party/`，不拉 submodule 必然编译失败；
+> 两个 workflow 都加了「校验 submodule 是否就位」的步骤，就是为了让这种失败一眼能看懂。
 
 ---
 
@@ -284,6 +333,8 @@ NeteaseBedrockGateway/
 │   ├── room/                 开房凭据生成（TanLobbyCreate）
 │   └── wplauncher/           4399X19Login 登录库（复制自 DHY0627/4399X19Login，MIT）
 ├── tools/frida/              逆向网易客户端用的 frida 脚本
+├── scripts/                  build.ps1 / build.sh 本地交叉编译脚本
+├── .github/workflows/        ci.yml（push 校验）+ release.yml（打 tag 自动发版）
 ├── docs/
 │   ├── troubleshooting.md    两个「静默失败」的完整排查记录 + 排查手法
 │   └── captures/             抓包与 hex 证据（含账号 token，**默认不入库**）

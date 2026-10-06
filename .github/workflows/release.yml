@@ -1,0 +1,164 @@
+name: Release
+
+# 打 tag（如 v1.0.0）时自动交叉编译并发布 Release；也可以在 Actions 页面手动触发。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag 名（手动触发时必填，例如 v1.0.0）'
+        required: true
+        type: string
+
+# 默认权限只读，发布 Release 需要写权限
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: windows, goarch: amd64 }
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+
+    steps:
+      # 依赖以 git submodule 形式放在 third_party/，必须 recursive 拉取，否则编译不过
+      - name: 检出代码（含 submodule）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # 防守：submodule 少拉一个就会在 go build 时报难懂的错，先明确报出来
+      - name: 校验 submodule 是否就位
+        run: |
+          missing="$(git submodule status | awk '/^-/ {print $2}')"
+          if [ -n "$missing" ]; then
+            echo "::error::以下 submodule 未拉取：$missing"
+            git submodule status
+            exit 1
+          fi
+          git submodule status
+
+      - name: 编译
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          ext=""
+          [ "$GOOS" = "windows" ] && ext=".exe"
+          out="NeteaseBedrockGateway-${GOOS}-${GOARCH}${ext}"
+          go build -trimpath -ldflags "-s -w" -o "dist/$out" ./cmd/gateway
+          ls -lh "dist/"
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeteaseBedrockGateway-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: 发布 Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码（含 submodule）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # 诊断工具只编当前 runner 平台（linux/amd64），够用且省时间
+      - name: 编译诊断工具
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p dist/diag
+          for tool in relaydecode javaprobe logindump chaininfo pcapsum fecheck; do
+            go build -trimpath -ldflags "-s -w" -o "dist/diag/$tool" "./cmd/diag/$tool"
+          done
+          tar -C dist -czf dist/NeteaseBedrockGateway-diag-linux-amd64.tar.gz diag
+          rm -rf dist/diag
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 生成校验和
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: 发布
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: dist/*
+          generate_release_notes: true
+          draft: false
+          body: |
+            ## 下载
+
+            按你的系统选择对应文件，解压/直接运行即可，**无需安装 Go 环境**：
+
+            | 系统 | 文件 |
+            |---|---|
+            | Windows 64 位 | `NeteaseBedrockGateway-windows-amd64.exe` |
+            | Linux x86_64 | `NeteaseBedrockGateway-linux-amd64` |
+            | Linux ARM64（如树莓派） | `NeteaseBedrockGateway-linux-arm64` |
+            | macOS Intel | `NeteaseBedrockGateway-darwin-amd64` |
+            | macOS Apple 芯片 | `NeteaseBedrockGateway-darwin-arm64` |
+            | 诊断工具（Linux） | `NeteaseBedrockGateway-diag-linux-amd64.tar.gz` |
+
+            ## 运行
+
+            ```bash
+            # Linux / macOS
+            chmod +x NeteaseBedrockGateway-linux-amd64
+            ./NeteaseBedrockGateway-linux-amd64 -u "4399账号" -p "密码" -target example.com:49780
+            ```
+
+            ```powershell
+            # Windows
+            .\NeteaseBedrockGateway-windows-amd64.exe -u "4399账号" -p "密码" -target example.com:49780
+            ```
+
+            > `-target` 必须指向 **Geyser 的 RakNet（UDP）端口**。目标服还需要安装配套扩展
+            > [GeyserNetease](https://github.com/DHY0627/GeyserNetease)，并设置
+            > `-DGeyserNetease.ServerAddress=你的域名:端口`。详见
+            > [README](https://github.com/DHY0627/NeteaseBedrockGateway#readme)。
+
+            ## 校验
+
+            下载后可用 `SHA256SUMS.txt` 校验完整性：
+
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```

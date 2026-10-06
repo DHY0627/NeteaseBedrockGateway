@@ -1,0 +1,58 @@
+name: CI
+
+# 每次 push / PR 都跑一遍：确保 submodule + 编译 + vet 是通的，
+# 免得依赖坏掉要到打 tag 发布时才发现。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 编译与检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码（含 submodule）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 校验 submodule 是否就位
+        run: |
+          missing="$(git submodule status | awk '/^-/ {print $2}')"
+          if [ -n "$missing" ]; then
+            echo "::error::以下 submodule 未拉取：$missing"
+            exit 1
+          fi
+          git submodule status
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: 编译全部包
+        env:
+          CGO_ENABLED: '0'
+        run: go build ./...
+
+      - name: 构建三个发布目标（不发布，只验证能过）
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          for target in windows/amd64 linux/amd64 linux/arm64; do
+            goos="${target%%/*}"; goarch="${target##*/}"
+            ext=""; [ "$goos" = "windows" ] && ext=".exe"
+            echo "==> ${target}"
+            GOOS="$goos" GOARCH="$goarch" \
+              go build -trimpath -ldflags "-s -w" -o "/tmp/NeteaseBedrockGateway-${goos}-${goarch}${ext}" ./cmd/gateway
+          done

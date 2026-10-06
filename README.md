@@ -399,6 +399,15 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 > 这三个依赖已随仓库 **`vendor/`** 一起提交（`go mod vendor` 的结果），所以 `git clone` 之后**无需另行准备**，直接 `go build` 即可编译。
 > `vendor/` 内代码版权与许可证归各自作者所有（`go mod vendor` 只做复制，不改变许可）。
 
+其中前两个用的是**我们自己的 fork**（都带了自己的补丁）：
+
+| 依赖 | 本项目的 fork | 上游 | 我们改了什么 |
+|---|---|---|---|
+| `nemc-tan-lobby-solver` | [DHY0627/nemc-tan-lobby-solver](https://github.com/DHY0627/nemc-tan-lobby-solver)（筹备中） | [UCKETX/nemc-tan-lobby-solver](https://github.com/UCKETX/nemc-tan-lobby-solver)（**无 LICENSE**） | NetherNet 不丢首包、不可靠通道、Geyser Secure Cookie、SCTP CRC32C 小端、TanLobby 编解码补充（共 14 个文件，清单见 fork 的 `FORK-NOTICE.md`） |
+| `sandertv/go-raknet` | `go-raknet-netease` | [sandertv/go-raknet](https://github.com/sandertv/go-raknet) `v1.15.1`（MIT） | `conn.go`：`protocolVersion` 由 `11` 改为 `8`（网易 RakNet 版本） |
+
+> ⚠️ `nemc-tan-lobby-solver` 上游**没有许可证文件**（fork 亦未新增），版权归原作者；本机自用不受分发条款约束，若要再分发请先联系原作者取得许可。
+
 ### 间接依赖（由 `go.sum` / `go mod vendor` 自动带入）
 
 | 分类          | 模块                                                                                                                                                                                                                    | 许可证                           |

@@ -99,8 +99,8 @@
 | Windows | ARM64 | `NeteaseBedrockGateway-windows-arm64.exe` |
 | Linux | x64（64 位） | `NeteaseBedrockGateway-linux-amd64` |
 | Linux | x86（32 位） | `NeteaseBedrockGateway-linux-386` |
-| Linux | ARM64（树莓派 4/5、ARM 服务器） | `NeteaseBedrockGateway-linux-arm64` |
-| Linux | ARM 32 位（树莓派 2/3、电视盒子） | `NeteaseBedrockGateway-linux-armv7` |
+| Linux | ARM64 | `NeteaseBedrockGateway-linux-arm64` |
+| Linux | ARM 32 位 | `NeteaseBedrockGateway-linux-armv7` |
 | macOS | Intel | `NeteaseBedrockGateway-darwin-amd64` |
 | macOS | Apple 芯片 | `NeteaseBedrockGateway-darwin-arm64` |
 | 诊断工具 | Linux x64 | `NeteaseBedrockGateway-diag-linux-amd64.tar.gz` |

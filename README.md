@@ -18,7 +18,6 @@
 
 - [特性](#特性)
 - [工作原理](#工作原理)
-- [编译前置：本仓库不能直接 go build](#编译前置本仓库不能直接-go-build)
 - [编译](#编译)
   - [Windows](#windows)
   - [Linux / macOS](#linux--macos)
@@ -89,7 +88,12 @@
 
 **要求**：Go **1.25+**（`go.mod` 声明 `go 1.25`）、**无需 CGO**（全平台可静态构建）。
 
-> 三个外部依赖已随仓库 `vendor/` 提交，**clone 下来直接编译即可**，不需要额外准备模块（也不需要联网拉依赖）。
+> **不需要任何前置步骤**：三个外部依赖都已随仓库 `vendor/` 一起提交，`git clone` 之后直接 `go build` 即可，
+> 不需要联网、不需要把依赖仓库 clone 到同级目录、也不需要先 `go get`。
+> `go.mod` 里 `nemc-tan-lobby-solver` 和 `go-raknet` 两个 fork 都是按**伪版本指向 GitHub** 的；
+> 只有 `g79client` 仍是相对路径 `../FunAuth/modules/g79client`——它只在你**自己重新 `go mod vendor`** 时才有影响，
+> 编译本仓库完全用不到（细节见 [依赖与许可](#依赖与许可dependencies--licenses)）。
+
 ### Windows
 
 ```powershell
@@ -404,13 +408,14 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 | 依赖 | 本项目的 fork | 上游 | 我们改了什么 |
 |---|---|---|---|
 | `nemc-tan-lobby-solver` | [DHY0627/nemc-tan-lobby-solver](https://github.com/DHY0627/nemc-tan-lobby-solver) | [UCKETX/nemc-tan-lobby-solver](https://github.com/UCKETX/nemc-tan-lobby-solver)（**无 LICENSE**） | NetherNet 不丢首包、不可靠通道、Geyser Secure Cookie、SCTP CRC32C 小端、TanLobby 编解码补充（共 14 个文件，清单见 fork 的 `FORK-NOTICE.md`） |
-| `sandertv/go-raknet` | `go-raknet-netease` | [sandertv/go-raknet](https://github.com/sandertv/go-raknet) `v1.15.1`（MIT） | `conn.go`：`protocolVersion` 由 `11` 改为 `8`（网易 RakNet 版本） |
+| `sandertv/go-raknet` | [DHY0627/go-raknet](https://github.com/DHY0627/go-raknet)（分支 `netease`） | [sandertv/go-raknet](https://github.com/sandertv/go-raknet) `v1.15.1`（MIT） | `conn.go`：`protocolVersion` 由 `11` 改为 `8`（网易客户端只认 RakNet 协议版本 8，发 11 会零数据），清单见 fork 的 `FORK-NOTICE.md` |
 
-> `go.mod` 里 solver 的 fork 已按**伪版本**直接指向 GitHub：
+> 两个 fork 都已按**伪版本**直接写进 `go.mod`：
 > `replace github.com/Happy2018new/nemc-tan-lobby-solver => github.com/DHY0627/nemc-tan-lobby-solver v0.0.0-20261006154354-f2649a16ba10`
-> （fork 的 `go.mod` 仍声明上游模块路径，这是 Go 支持的标准 fork 替换写法；`vendor/` 里的代码就是该提交，`vendor/modules.txt` 里有对应记录。）
-> 想跟上 fork 的新提交：`go mod edit -replace github.com/Happy2018new/nemc-tan-lobby-solver=github.com/DHY0627/nemc-tan-lobby-solver@v0.0.0-<提交的UTC时间戳>-<12位hash>`，然后 `go mod vendor`。
-> `go-raknet` 的 fork 目前仍是相对路径 `../go-raknet-netease`：只**编译**本仓库不需要它（`vendor/` 已含全部代码），只有要重新 `go mod vendor` 时才需要把它放在同级目录。
+> `replace github.com/sandertv/go-raknet => github.com/DHY0627/go-raknet v0.0.0-20261006160054-2e9d856aae61`
+> （两个 fork 的 `go.mod` 都仍声明上游模块路径，这是 Go 支持的标准 fork 替换写法；`vendor/` 里的代码就是这两个提交，`vendor/modules.txt` 里有对应记录。）
+> 想跟上 fork 的新提交：`go mod edit -replace <上游模块路径>=<fork地址>@v0.0.0-<提交的UTC时间戳>-<12位hash>`，然后 `go mod vendor`。
+> 只有 `g79client` 还是相对路径 `../FunAuth/modules/g79client`：只**编译**本仓库不需要它（`vendor/` 已含全部代码），要重新 `go mod vendor` 时才需要把它放在同级目录。
 
 > ⚠️ `nemc-tan-lobby-solver` 上游**没有许可证文件**（fork 亦未新增），版权归原作者；本机自用不受分发条款约束，若要再分发请先联系原作者取得许可。
 

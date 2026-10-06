@@ -20,8 +20,11 @@ import (
 
 const (
 	// protocolVersion is the current RakNet protocol version. This is Minecraft
-	// specific. 修改为 8：网易客户端（GeyserNetease）要求 RakNet 协议版本 8
-	// 才会走网易处理路径（NETEASE_RAKNET）。
+	// specific.
+	//
+	// NetEase (China) clients only answer RakNet protocol version 8, the
+	// NETEASE_RAKNET path; with version 11 they stay silent, so this fork pins
+	// it to 8. 网易（中国版）客户端只认 RakNet 协议版本 8，发 11 会被直接忽略。
 	protocolVersion byte = 8
 
 	minMTUSize    = 400

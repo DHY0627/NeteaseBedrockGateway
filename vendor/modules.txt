@@ -155,7 +155,7 @@ github.com/pion/turn/v4/internal/client
 github.com/pion/turn/v4/internal/ipnet
 github.com/pion/turn/v4/internal/proto
 github.com/pion/turn/v4/internal/server
-# github.com/sandertv/go-raknet v1.15.1 => ../go-raknet-netease
+# github.com/sandertv/go-raknet v1.15.1 => github.com/DHY0627/go-raknet v0.0.0-20261006160054-2e9d856aae61
 ## explicit; go 1.22
 github.com/sandertv/go-raknet
 github.com/sandertv/go-raknet/internal
@@ -197,4 +197,4 @@ golang.org/x/text/internal/tag
 golang.org/x/text/language
 # github.com/Yeah114/g79client => ../FunAuth/modules/g79client
 # github.com/Happy2018new/nemc-tan-lobby-solver => github.com/DHY0627/nemc-tan-lobby-solver v0.0.0-20261006154354-f2649a16ba10
-# github.com/sandertv/go-raknet => ../go-raknet-netease
+# github.com/sandertv/go-raknet => github.com/DHY0627/go-raknet v0.0.0-20261006160054-2e9d856aae61

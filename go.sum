@@ -1,3 +1,5 @@
+github.com/DHY0627/go-raknet v0.0.0-20261006160054-2e9d856aae61 h1:E4zCodJX09cj9261Wq06OjqOvPpCF/KxX/1oXuihI9k=
+github.com/DHY0627/go-raknet v0.0.0-20261006160054-2e9d856aae61/go.mod h1:/yysjwfCXm2+2OY8mBazLzcxJ3irnylKCyG3FLgUPVU=
 github.com/DHY0627/nemc-tan-lobby-solver v0.0.0-20261006154354-f2649a16ba10 h1:CoG+1PYFNBzQGIA/rOmCeCt3IZrlzlTugPug5OrdjBI=
 github.com/DHY0627/nemc-tan-lobby-solver v0.0.0-20261006154354-f2649a16ba10/go.mod h1:A3xO61/8HSUyylGk+8RfqumqFaNBYvhlYmFWWLWBVe8=
 github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9g=

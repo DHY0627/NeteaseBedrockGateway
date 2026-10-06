@@ -14,9 +14,16 @@ OUT_DIR="${OUT_DIR:-dist}"
 TARGETS=("${@:-linux/amd64 linux/arm64 windows/amd64}")
 mkdir -p "$OUT_DIR"
 
-echo "==> 检查依赖（go.mod 的本地 replace 必须就位）"
+echo "==> 检查 submodule（依赖在 third_party/ 下）"
+missing="$(git submodule status | awk '/^-/ {print $2}')"
+if [ -n "$missing" ]; then
+  echo "以下 submodule 还没拉取：" >&2
+  echo "$missing" | sed 's/^/    /' >&2
+  echo "请先执行：git submodule update --init --recursive" >&2
+  exit 1
+fi
 if ! go list -m all >/dev/null 2>&1; then
-  echo "依赖缺失：请先按 README「依赖准备」把 nemc-tan-lobby-solver / go-raknet-netease / g79client 放到同级目录。" >&2
+  echo "依赖解析失败：请确认 third_party/ 下三个 submodule 都已就位。" >&2
   exit 1
 fi
 

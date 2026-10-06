@@ -15,10 +15,20 @@ $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-Write-Host "==> 检查依赖（go.mod 的本地 replace 必须就位）" -ForegroundColor Cyan
+Write-Host "==> 检查 submodule（依赖在 third_party/ 下）" -ForegroundColor Cyan
+$missing = @()
+foreach ($line in (git submodule status)) {
+    if ($line.StartsWith("-")) { $missing += ($line -split ' ')[1] }
+}
+if ($missing.Count -gt 0) {
+    Write-Host "以下 submodule 还没拉取：" -ForegroundColor Red
+    $missing | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+    Write-Host "请先执行：git submodule update --init --recursive" -ForegroundColor Yellow
+    exit 1
+}
 go list -m all > $null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "依赖缺失：请先按 README「依赖准备」把 nemc-tan-lobby-solver / go-raknet-netease / g79client 放到同级目录。" -ForegroundColor Red
+    Write-Host "依赖解析失败：请确认 third_party/ 下三个 submodule 都已就位。" -ForegroundColor Red
     exit 1
 }
 

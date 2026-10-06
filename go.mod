@@ -40,8 +40,8 @@ require (
 	golang.org/x/text v0.29.0 // indirect
 )
 
-replace github.com/Yeah114/g79client => ../FunAuth/modules/g79client
+replace github.com/Yeah114/g79client => ./third_party/g79client
 
-replace github.com/Happy2018new/nemc-tan-lobby-solver => github.com/DHY0627/nemc-tan-lobby-solver v0.0.0-20261006154354-f2649a16ba10
+replace github.com/Happy2018new/nemc-tan-lobby-solver => ./third_party/nemc-tan-lobby-solver
 
-replace github.com/sandertv/go-raknet => github.com/DHY0627/go-raknet v0.0.0-20261006160054-2e9d856aae61
+replace github.com/sandertv/go-raknet => ./third_party/go-raknet

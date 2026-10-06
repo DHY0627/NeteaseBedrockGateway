@@ -86,18 +86,23 @@
 ---
 ## 编译
 
-**要求**：Go **1.25+**（`go.mod` 声明 `go 1.25`）、**无需 CGO**（全平台可静态构建）。
+**要求**：Go **1.25+**（`go.mod` 声明 `go 1.25`）、**无需 CGO**（全平台可静态构建）、**git**。
 
-> **不需要任何前置步骤**：三个外部依赖都已随仓库 `vendor/` 一起提交，`git clone` 之后直接 `go build` 即可，
-> 不需要联网、不需要把依赖仓库 clone 到同级目录、也不需要先 `go get`。
-> `go.mod` 里 `nemc-tan-lobby-solver` 和 `go-raknet` 两个 fork 都是按**伪版本指向 GitHub** 的；
-> 只有 `g79client` 仍是相对路径 `../FunAuth/modules/g79client`——它只在你**自己重新 `go mod vendor`** 时才有影响，
-> 编译本仓库完全用不到（细节见 [依赖与许可](#依赖与许可dependencies--licenses)）。
+> ⚠️ **依赖用 git submodule 管理，clone 之后必须先拉取，否则编译不过。**
+> 三个外部依赖位于 `third_party/`，分别指向各自的 Git 仓库（两个是本项目的 fork）：
+> `third_party/nemc-tan-lobby-solver`、`third_party/go-raknet`、`third_party/g79client`。
+> 拉取命令（**clone 后第一件事**）：
+> ```bash
+> git submodule update --init --recursive
+> ```
+> 如果你 clone 时想一步到位：`git clone --recurse-submodules https://github.com/DHY0627/NeteaseBedrockGateway.git`
+> 之后 `go build` 就正常了；`go.mod` 用相对路径 `./third_party/...` 指向它们，**不要**再执行 `go mod vendor`。
+> 只有第三方**间接**依赖（pion、x/crypto 等）仍需联网从模块代理下载，`go.sum` 里已固定版本与哈希。
 
 ### Windows
 
 ```powershell
-git clone https://github.com/DHY0627/NeteaseBedrockGateway.git
+git clone --recurse-submodules https://github.com/DHY0627/NeteaseBedrockGateway.git
 cd NeteaseBedrockGateway
 
 go build -o NeteaseBedrockGateway.exe ./cmd/gateway
@@ -112,7 +117,7 @@ go build -o bin/javaprobe.exe   ./cmd/diag/javaprobe
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/DHY0627/NeteaseBedrockGateway.git
+git clone --recurse-submodules https://github.com/DHY0627/NeteaseBedrockGateway.git
 cd NeteaseBedrockGateway
 
 go build -o NeteaseBedrockGateway ./cmd/gateway
@@ -284,7 +289,8 @@ NeteaseBedrockGateway/
 │   ├── troubleshooting.md    两个「静默失败」的完整排查记录 + 排查手法
 │   └── captures/             抓包与 hex 证据（含账号 token，**默认不入库**）
 ├── images/                   开发者名单用的图片
-├── vendor/                   已 vendor 的三个外部依赖（clone 后可直接编译）
+├── third_party/              三个外部依赖（git submodule：solver / go-raknet / g79client）
+├── .gitmodules               上面三个 submodule 的地址与分支
 ├── room.json / room.txt      运行时房间状态（不入库）
 ├── relay.log                 转发包记录（不入库；主日志是标准输出，重定向保存即可，例如 > host.log）
 ├── README.md / LICENSE / .gitignore / .gitattributes
@@ -400,8 +406,10 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 | `github.com/sandertv/go-raknet`（fork）           | RakNet 客户端（连 Geyser / BDS）               |
 | `github.com/Yeah114/g79client`                  | 4399 登录 / 房间 API 客户端                     |
 
-> 这三个依赖已随仓库 **`vendor/`** 一起提交（`go mod vendor` 的结果），所以 `git clone` 之后**无需另行准备**，直接 `go build` 即可编译。
-> `vendor/` 内代码版权与许可证归各自作者所有（`go mod vendor` 只做复制，不改变许可）。
+> 这三个依赖以 **git submodule** 的形式放在 `third_party/` 下（见 `.gitmodules`），
+> 所以 `git clone` 之后要执行一次 `git submodule update --init --recursive` 才能编译（或 clone 时加 `--recurse-submodules`）。
+> `go.mod` 用相对路径把它们接进来：`replace <模块路径> => ./third_party/<目录名>`。
+> `third_party/` 内代码版权与许可证归各自作者所有（submodule 只是引用，不改变许可）。
 
 其中前两个用的是**我们自己的 fork**（都带了自己的补丁）：
 
@@ -410,16 +418,14 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 | `nemc-tan-lobby-solver` | [DHY0627/nemc-tan-lobby-solver](https://github.com/DHY0627/nemc-tan-lobby-solver) | [UCKETX/nemc-tan-lobby-solver](https://github.com/UCKETX/nemc-tan-lobby-solver)（**无 LICENSE**） | NetherNet 不丢首包、不可靠通道、Geyser Secure Cookie、SCTP CRC32C 小端、TanLobby 编解码补充（共 14 个文件，清单见 fork 的 `FORK-NOTICE.md`） |
 | `sandertv/go-raknet` | [DHY0627/go-raknet](https://github.com/DHY0627/go-raknet)（分支 `netease`） | [sandertv/go-raknet](https://github.com/sandertv/go-raknet) `v1.15.1`（MIT） | `conn.go`：`protocolVersion` 由 `11` 改为 `8`（网易客户端只认 RakNet 协议版本 8，发 11 会零数据），清单见 fork 的 `FORK-NOTICE.md` |
 
-> 两个 fork 都已按**伪版本**直接写进 `go.mod`：
-> `replace github.com/Happy2018new/nemc-tan-lobby-solver => github.com/DHY0627/nemc-tan-lobby-solver v0.0.0-20261006154354-f2649a16ba10`
-> `replace github.com/sandertv/go-raknet => github.com/DHY0627/go-raknet v0.0.0-20261006160054-2e9d856aae61`
-> （两个 fork 的 `go.mod` 都仍声明上游模块路径，这是 Go 支持的标准 fork 替换写法；`vendor/` 里的代码就是这两个提交，`vendor/modules.txt` 里有对应记录。）
-> 想跟上 fork 的新提交：`go mod edit -replace <上游模块路径>=<fork地址>@v0.0.0-<提交的UTC时间戳>-<12位hash>`，然后 `go mod vendor`。
-> 只有 `g79client` 还是相对路径 `../FunAuth/modules/g79client`：只**编译**本仓库不需要它（`vendor/` 已含全部代码），要重新 `go mod vendor` 时才需要把它放在同级目录。
+> 三个 submodule 就对应上表三个依赖，`third_party/<目录名>` 即各自的检出位置：
+> `nemc-tan-lobby-solver` 跟踪 fork 的 `main`（`f2649a1`），`go-raknet` 跟踪 fork 的 `netease` 分支（`2e9d856`，基线 `v1.15.1`），
+> `g79client` 直接钉在上游 `UCKETX/g79client` 的 `e837667`（与本项目收到的版本完全一致，没有本地改动）。
+> 要升级某个 fork：在 `third_party/<目录名>` 里 `git fetch && git checkout <新提交>`，回到仓库根目录 `git add third_party/<目录名>` 提交这个新指针即可（**不要**再执行 `go mod vendor`）。
 
 > ⚠️ `nemc-tan-lobby-solver` 上游**没有许可证文件**（fork 亦未新增），版权归原作者；本机自用不受分发条款约束，若要再分发请先联系原作者取得许可。
 
-### 间接依赖（由 `go.sum` / `go mod vendor` 自动带入）
+### 间接依赖（不在 `third_party/` 里，由 `go.sum` 自动解析）
 
 | 分类          | 模块                                                                                                                                                                                                                    | 许可证                           |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
@@ -428,7 +434,7 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 | 工具库         | `google/uuid`、`muhammadmuzzammil1998/jsonc`、`ugorji/go/codec`、`df-mc/atomic`、`go-gl/mathgl`、`wlynxg/anet`                                                                                                             | 各自仓库为准                        |
 | 标准库扩展       | `golang.org/x/crypto`、`golang.org/x/net`、`golang.org/x/sys`、`golang.org/x/text`                                                                                                                                       | BSD-3-Clause                  |
 
-> 完整列表（含版本与哈希）：`go.mod`、`go.sum`；执行 `go mod vendor` 后还会生成 `vendor/modules.txt`。
+> 完整列表（含版本与哈希）：`go.mod`、`go.sum`。这些是普通模块依赖（不是 submodule），首次编译会自动下载到本机模块缓存。
 
 ### 内嵌的第三方代码
 

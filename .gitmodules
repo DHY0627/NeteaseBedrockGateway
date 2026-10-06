@@ -1,0 +1,11 @@
+[submodule "third_party/go-raknet"]
+	path = third_party/go-raknet
+	url = https://github.com/DHY0627/go-raknet.git
+	branch = netease
+[submodule "third_party/g79client"]
+	path = third_party/g79client
+	url = https://github.com/UCKETX/g79client.git
+[submodule "third_party/nemc-tan-lobby-solver"]
+	path = third_party/nemc-tan-lobby-solver
+	url = https://github.com/DHY0627/nemc-tan-lobby-solver.git
+	branch = main

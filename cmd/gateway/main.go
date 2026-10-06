@@ -185,8 +185,9 @@ func hostReadLoop(ctx context.Context, host *session, hostNetherID uint64, serve
 			if ctx.Err() != nil {
 				return
 			}
-			// 未知包 ID 不应导致断开：记录并继续（可能是未实现的包类型）
-			if strings.Contains(err.Error(), "未知包 ID") {
+			// 未知包 ID / 解析失败不应导致断开：记录并继续。
+			// （部分包的线格式尚未用抓包确认，解析失败时把原始字节打出来。）
+			if strings.Contains(err.Error(), "未知包 ID") || strings.Contains(err.Error(), "解析包失败") {
 				log.Printf("[房主] %v（继续监听）", err)
 				continue
 			}
@@ -523,23 +524,32 @@ func writePacket(encoder *packet.Encoder, pk packet.Packet) error {
 	return encoder.Encode(full)
 }
 
-func readPacket(decoder *packet.Decoder) (packet.Packet, error) {
+func readPacket(decoder *packet.Decoder) (pk packet.Packet, err error) {
 	pkData, err := decoder.Decode()
 	if err != nil {
 		return nil, err
 	}
+	// 这个协议的 decoder 在数据不够时是直接 panic（reader 里没有边界检查），
+	// 而我们对部分包的线格式仍是推断出来的。这里兜住 panic，避免一个没解析
+	// 成功的包把整个网关带崩 —— 并把原始字节打出来，便于事后核对真实格式。
+	defer func() {
+		if r := recover(); r != nil {
+			pk = nil
+			err = fmt.Errorf("解析包失败(%v) 原始数据=%x", r, pkData)
+		}
+	}()
 	buf := bytes.NewBuffer(pkData)
 	reader := encoding.NewReader(buf)
 	header := packet.Header{}
 	if err := header.Read(buf); err != nil {
 		return nil, err
 	}
-	pk := packet.NewServerPool()[header.PacketID]
-	if pk == nil {
+	p := packet.NewServerPool()[header.PacketID]
+	if p == nil {
 		return nil, fmt.Errorf("未知包 ID: %d (数据=%x)", header.PacketID, pkData)
 	}
-	pk.Marshal(reader)
-	return pk, nil
+	p.Marshal(reader)
+	return p, nil
 }
 
 func randUint64() (uint64, error) {

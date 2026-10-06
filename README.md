@@ -18,7 +18,7 @@
 
 - [特性](#特性)
 - [工作原理](#工作原理)
-- [依赖准备（⚠️ 必读）](#依赖准备-必读)
+- [编译前置：本仓库不能直接 go build](#编译前置本仓库不能直接-go-build)
 - [编译](#编译)
   - [Windows](#windows)
   - [Linux / macOS](#linux--macos)
@@ -86,76 +86,156 @@
 
 ---
 
-## 依赖准备（⚠️ 必读）
+## 编译前置：本仓库不能直接 `go build`
 
-本项目通过 `go.mod` 的 **本地 replace** 依赖三个模块，它们**不在本仓库内**。请把仓库与这三个模块放在**同一个父目录**下（相对路径 replace 已经配好）：
+> ⚠️ **必读** —— 不准备依赖就一定编译不过。
+
+先说实话：**`git clone` 之后直接编译会失败**。本项目依赖三个**不在本仓库里**的 Go 模块，它们在 `go.mod` 中通过本地 `replace` 引入：
+
+| 模块 | 用途 | 是否公开可得 |
+|---|---|---|
+| `github.com/Happy2018new/nemc-tan-lobby-solver` | 网易 TanLobby / NetherNet 协议实现 | ❌ 上游未公开发布；需自备一份并**打补丁**（见下） |
+| `github.com/sandertv/go-raknet`（fork） | RakNet 客户端，协议版本 **8**（网易用的版本） | ✅ 上游公开；fork 只需改 **1 行**（见下） |
+| `github.com/Yeah114/g79client` | 4399 登录 API 客户端 | ❌ 未公开；需自备 |
+
+直接编译会看到这类报错（属预期，不是环境问题）：
+
+```
+go: github.com/Happy2018new/nemc-tan-lobby-solver@v0.0.0-...: replacement directory ../nemc-tan-lobby-solver does not exist
+missing go.sum entry for module providing package github.com/Yeah114/g79client
+```
+
+所以请**先准备依赖，再编译**。三种方式任选其一：
+
+---
+
+### 方案 A：把依赖放在同一个父目录（默认方式，最省事）
+
+`go.mod` 里已经写好相对路径 `replace`，只要目录长这样即可：
 
 ```
 <父目录>/
 ├── NeteaseBedrockGateway/          ← 本仓库
-├── nemc-tan-lobby-solver/          ← 网易本地联机协议实现（★ 需要打补丁，见下）
-├── go-raknet-netease/              ← sandertv/go-raknet 的 fork（RakNet 协议版本 8 = 网易）
+├── nemc-tan-lobby-solver/          ← ★ 需要打补丁
+├── go-raknet-netease/              ← sandertv/go-raknet fork（协议版本 8）
 └── FunAuth/
     └── modules/
-        └── g79client/              ← 4399 登录 API 客户端
+        └── g79client/              ← 4399 登录客户端
 ```
 
 ```go
-// go.mod
+// go.mod（已配置好，目录不同就改这三行）
 replace github.com/Yeah114/g79client                   => ../FunAuth/modules/g79client
 replace github.com/Happy2018new/nemc-tan-lobby-solver  => ../nemc-tan-lobby-solver
 replace github.com/sandertv/go-raknet                  => ../go-raknet-netease
 ```
 
-如果你的目录结构不同，改 `go.mod` 里这三行即可（也可以换成自己的 git 仓库地址）。
+#### A-1. `go-raknet-netease`：fork 上游并改 1 行
 
-### ★ `nemc-tan-lobby-solver` 必须打一个补丁
+```bash
+git clone https://github.com/sandertv/go-raknet.git go-raknet-netease
+cd go-raknet-netease
+git checkout v1.15.1
+# 编辑 conn.go：把 protocolVersion 由 11 改成 8
+```
 
-不打这个补丁，客户端会「连上了但一个字节都不发」然后超时。补丁内容很短（3 个文件）：
+```go
+// conn.go 第 24 行附近
+// protocolVersion is the current RakNet protocol version. This is Minecraft
+// specific. 修改为 8：网易客户端（GeyserNetease）要求 RakNet 协议版本 8
+// 才会走网易处理路径（NETEASE_RAKNET）。
+protocolVersion byte = 8
+```
+
+> 与上游 v1.15.1 的**唯一**差异就是这一行。
+
+#### A-2. `nemc-tan-lobby-solver`：自备源码 + 打补丁（**必须**）
+
+上游没有公开发布这个模块，因此你需要自己拿一份（作者提供 / 你已有的副本），然后打上下面这个补丁。
+**不打补丁的症状**：客户端显示「已连接」但网关一个字节都收不到，90 秒后超时，`relay.log` 一直不生成。
 
 | 文件 | 改动 |
 |---|---|
 | `core/nethernet/conn.go` | 新增 `bindChannelHandlers()`（幂等绑定收发处理器），`handleTransports()` 改为调用它 |
-| `core/nethernet/listener.go` | `OnDataChannelOpened` 里在拿到通道后**立刻** `conn.bindChannelHandlers(channel)`，不要等两个通道都齐 |
+| `core/nethernet/listener.go` | `OnDataChannelOpened` 拿到通道后**立刻** `conn.bindChannelHandlers(channel)`，不要等两个通道都齐 |
 | `core/nethernet/dial.go` | 创建 `ReliableDataChannel` / `UnreliableDataChannel` 后各调用一次 `conn.bindChannelHandlers(...)` |
 
-原因：底层 WebRTC 数据通道一建立就开始读取，而消息处理器原本要等**两个**通道都协商完才注册；网易客户端把 DCEP 握手与第一个游戏包在同一毫秒发出，于是首包被静默丢弃。完整分析与代码片段见
-[**docs/troubleshooting.md → 根因 ①**](docs/troubleshooting.md#根因--nethernet-库丢掉客户端的第一个-bedrock-包)。
+原因与完整代码片段见 [**docs/troubleshooting.md → 根因 ①**](docs/troubleshooting.md#根因--nethernet-库丢掉客户端的第一个-bedrock-包)。
 
-### 想直接发布给别人用？
+#### A-3. `g79client`：自备源码
 
-上面的依赖不在本仓库，别人 `git clone` 后无法直接编译。两种做法：
+`D:\git\FunAuth\modules\g79client`（或你自己的副本）放到上面树里的位置即可；它是 4399 登录 API 的 Go 客户端。
 
-1. **（推荐）把依赖一起 vendor 进来**，仓库自包含：
+#### A-4. 验证依赖就位
 
-   ```bash
-   go mod vendor          # 把 replace 的本地模块复制进 vendor/
-   go build -mod=vendor -o NeteaseBedrockGateway ./cmd/gateway
-   ```
+```bash
+go list -m all        # 能列出全部模块 = replace 目标都存在
+# 或直接编译（见下一节），失败时脚本会给出缺失提示
+```
 
-   记得删掉 `.gitignore` 里的 `vendor/` 一行，并保留依赖各自的 LICENSE/来源说明。
-2. 把三个依赖推到你自己的仓库，并把 `go.mod` 的 replace 换成仓库地址。
+---
+
+### 方案 B：把 `replace` 换成你自己的仓库地址
+
+把三个依赖推到你自己的 GitHub 仓库（或公开发布 fork），然后：
+
+```go
+// go.mod
+replace github.com/Happy2018new/nemc-tan-lobby-solver => github.com/你的账号/nemc-tan-lobby-solver v0.0.0-20260101000000-abcdef123456
+replace github.com/sandertv/go-raknet                 => github.com/你的账号/go-raknet-netease v1.15.1
+replace github.com/Yeah114/g79client                  => github.com/你的账号/g79client v0.0.0-20260101000000-abcdef123456
+```
+
+之后 `go mod tidy` 可正常拉取，仓库对外也就「能直接编译」了。
+
+---
+
+### 方案 C：vendor（想让自己或别人**开箱可编译**就选它）
+
+```bash
+# 前提：先按方案 A 把三个依赖放好
+go mod vendor
+git add vendor && git commit -m "chore: vendor dependencies"
+```
+
+之后任何人（含 CI）：
+
+```bash
+go build -mod=vendor -o NeteaseBedrockGateway ./cmd/gateway
+```
+
+注意：
+- 需要把 `.gitignore` 里的 `vendor/` 一行删掉，否则不会入库；
+- 三个依赖各自的 LICENSE / 来源说明要一并保留（`vendor/` 内会带上部分，建议在 README「致谢」里注明）；
+- vendor 之后 `go.mod` 的 `replace` 仍指向本地路径也没关系，构建会走 `vendor/`。
 
 ---
 
 ## 编译
 
-**要求**：Go **1.25+**（`go.mod` 声明 `go 1.25`）。无需 CGO，全平台可静态构建。
-
-先确认依赖就位：
+**要求**：Go **1.25+**（`go.mod` 声明 `go 1.25`）、**无需 CGO**（全平台可静态构建）。
+**第 0 步**：先按上一节准备好依赖，否则编译必然失败。
 
 ```bash
-go mod download    # 仅校验依赖能解析；缺失时会提示找不到 replace 目标
+# 一键检查依赖 + 交叉编译（Windows）
+.\scripts\build.ps1
+
+# 一键检查依赖 + 交叉编译（Linux/macOS）
+./scripts/build.sh
 ```
+
+脚本会先跑 `go list -m all` 做依赖预检，缺失时直接提示「请先按 README『依赖准备』……」并退出。
 
 ### Windows
 
 ```powershell
-git clone <你的仓库地址> NeteaseBedrockGateway
+git clone https://github.com/<你的账号>/NeteaseBedrockGateway.git
 cd NeteaseBedrockGateway
+# ← 此处先准备依赖（见上一节）
 
 go build -o NeteaseBedrockGateway.exe ./cmd/gateway
-# 可选：顺便编译诊断工具
+
+# 可选：顺便编译常用诊断工具
 go build -o bin/relaydecode.exe ./cmd/diag/relaydecode
 go build -o bin/javaprobe.exe   ./cmd/diag/javaprobe
 
@@ -165,8 +245,9 @@ go build -o bin/javaprobe.exe   ./cmd/diag/javaprobe
 ### Linux / macOS
 
 ```bash
-git clone <你的仓库地址> NeteaseBedrockGateway
+git clone https://github.com/<你的账号>/NeteaseBedrockGateway.git
 cd NeteaseBedrockGateway
+# ← 此处先准备依赖（见上一节）
 
 go build -o NeteaseBedrockGateway ./cmd/gateway
 chmod +x NeteaseBedrockGateway
@@ -186,6 +267,7 @@ go build -o NeteaseBedrockGateway ./cmd/gateway
 ```
 
 > 常见目标：`linux/amd64`、`linux/arm64`（树莓派 / Orange Pi 等）、`windows/amd64`。
+> 用 `scripts/build.ps1` / `scripts/build.sh` 可以一次出这三个平台的精简产物（`-trimpath -ldflags "-s -w"`）。
 
 ### 全部组件一起编译（可选）
 
@@ -401,7 +483,7 @@ go run ./cmd/diag/javaprobe -addr be.4f4t.top:25565 -mode login -name TestPlayer
 | 症状 | 先看哪里 | 多半是 |
 |---|---|---|
 | 客户端一直「等待房主开始游戏」 | 网关日志有没有 `新玩家加入房间` + `已向玩家上报 NetherNetID` | `TanNotifyServerReady` 没发或发早了 |
-| 客户端连上但**零数据**、90 秒超时、`relay.log` 不生成 | `host.log` 中 `收到玩家连接` 之后 | 依赖 `nemc-tan-lobby-solver` 没打补丁（见[依赖准备](#依赖准备-必读)） |
+| 客户端连上但**零数据**、90 秒超时、`relay.log` 不生成 | `host.log` 中 `收到玩家连接` 之后 | 依赖 `nemc-tan-lobby-solver` 没打补丁（见[编译前置](#编译前置本仓库不能直接-go-build)） |
 | 客户端显示 **`数据流终止`**，Geyser 日志同款，Velocity 无日志 | 扩展嗅探日志（`-DGeyserNetease.Sniff=true`） | Geyser 的 java 握手 hostname 为空 → 设置 `-DGeyserNetease.ServerAddress` |
 | Geyser 报「服务器已过期/版本不支持」 | Geyser 日志 | 目标服缺 GeyserNetease 扩展，或扩展版本过旧 |
 | 房间突然消失 | 网关日志有没有「房间存活检查失败」 | 房间被网易回收 → 新版会自动重建 |

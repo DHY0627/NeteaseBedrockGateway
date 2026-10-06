@@ -68,7 +68,7 @@ func main() {
 	)
 	flag.Parse()
 	if *username == "" || *password == "" || *target == "" {
-		fmt.Fprintln(os.Stderr, "用法: host -u 用户名 -p 密码 -target 服务器IP/域名:端口 [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔]")
+		fmt.Fprintln(os.Stderr, "用法: NeteaseBedrockGateway -u 用户名 -p 密码 -target 服务器IP/域名:端口 [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔]")
 		if *username != "" && *password != "" && *target == "" {
 			fmt.Fprintln(os.Stderr, "错误: -target 必填（玩家流量转发目标，例如 -target 服务器IP/域名:49780）")
 		}

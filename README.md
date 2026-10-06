@@ -286,7 +286,7 @@ NeteaseBedrockGateway/
 ├── images/                   开发者名单用的图片
 ├── vendor/                   已 vendor 的三个外部依赖（clone 后可直接编译）
 ├── room.json / room.txt      运行时房间状态（不入库）
-├── host.log / relay.log      运行时日志与转发包记录（不入库）
+├── relay.log                 转发包记录（不入库；主日志是标准输出，重定向保存即可，例如 > host.log）
 ├── README.md / LICENSE / .gitignore / .gitattributes
 └── go.mod / go.sum
 ```
@@ -336,7 +336,7 @@ go run ./cmd/diag/javaprobe -addr be.4f4t.top:25565 -mode login -name TestPlayer
 | 症状 | 先看哪里 | 多半是 |
 |---|---|---|
 | 客户端一直「等待房主开始游戏」 | 网关日志有没有 `新玩家加入房间` + `已向玩家上报 NetherNetID` | `TanNotifyServerReady` 没发或发早了 |
-| 客户端连上但**零数据**、90 秒超时、`relay.log` 不生成 | `host.log` 中 `收到玩家连接` 之后 | 依赖 `nemc-tan-lobby-solver` 没打补丁（见 [依赖与许可](#依赖与许可dependencies--licenses) 的 fork 说明） |
+| 客户端连上但**零数据**、90 秒超时、`relay.log` 不生成 | 启动日志（标准输出）里 `收到玩家连接` 之后 | 依赖 `nemc-tan-lobby-solver` 没打补丁（见 [依赖与许可](#依赖与许可dependencies--licenses) 的 fork 说明） |
 | 客户端显示 **`数据流终止`**，Geyser 日志同款，Velocity 无日志 | 扩展嗅探日志（`-DGeyserNetease.Sniff=true`） | Geyser 的 java 握手 hostname 为空 → 设置 `-DGeyserNetease.ServerAddress` |
 | Geyser 报「服务器已过期/版本不支持」 | Geyser 日志 | 目标服缺 GeyserNetease 扩展，或扩展版本过旧 |
 | 房间突然消失 | 网关日志有没有「房间存活检查失败」 | 房间被网易回收 → 新版会自动重建 |

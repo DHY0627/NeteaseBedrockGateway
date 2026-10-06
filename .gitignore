@@ -1,0 +1,59 @@
+# ===== 构建产物 =====
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+/out/
+host
+host.exe
+NeteaseBedrockGateway
+NeteaseBedrockGateway.exe
+/dist/
+/scripts/out/
+
+# ===== 运行时状态与日志 =====
+*.log
+host_out.log
+relay.log
+room.json
+room.txt
+*.tmp
+*.pid
+
+# ===== 敏感证据：抓包 / 身份链 / JWT（含真实账号 token，绝不入库）=====
+*.pcap
+*.pcapng
+*.hex
+*.jwt
+docs/captures/*
+!docs/captures/README.md
+
+# ===== 验证码与本地凭据 =====
+captcha.png
+auth_json*.txt
+cookie*.txt
+*.session
+credentials*.json
+
+# ===== 网易客户端逆向产物（.pyc 转储、frida 输出）=====
+mcp_out/
+*.pyc
+tools/frida/out/
+
+# ===== 编辑器 / 系统 =====
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== Go =====
+*.test
+*.out
+coverage.txt
+vendor/

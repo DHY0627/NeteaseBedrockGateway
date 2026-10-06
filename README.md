@@ -1,0 +1,465 @@
+# NeteaseBedrockGateway
+
+**用程序开一个网易「本地联机」房间，让网易版 Minecraft（中国版）玩家用原版客户端凭房间号，直接进你的 Geyser / 基岩版服务器。**
+
+> 玩家零安装：**不需要 mod、不需要改包、不需要客户端插件**，只要在网易客户端「本地联机」里输入房间号。
+>
+> **English** — A Go gateway that programmatically creates a NetEase (China) Minecraft "LAN" room via 4399 login + TanLobby, then relays every player's Bedrock traffic to your Geyser / BDS server. Players use the stock NetEase client and just type the room number. No client-side modifications required.
+
+<p>
+<img alt="Go" src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go">
+<img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey">
+<img alt="License" src="https://img.shields.io/badge/license-MIT-green">
+</p>
+
+---
+
+## 目录
+
+- [特性](#特性)
+- [工作原理](#工作原理)
+- [依赖准备（⚠️ 必读）](#依赖准备-必读)
+- [编译](#编译)
+  - [Windows](#windows)
+  - [Linux / macOS](#linux--macos)
+  - [交叉编译](#交叉编译)
+- [使用方法](#使用方法)
+  - [1. 启动网关](#1-启动网关)
+  - [2. 玩家进服](#2-玩家进服)
+  - [3. 目标服务器要求](#3-目标服务器要求)
+  - [4. 常驻运行](#4-常驻运行)
+- [命令行参数](#命令行参数)
+- [房间状态文件](#房间状态文件)
+- [目录结构](#目录结构)
+- [诊断工具](#诊断工具)
+- [故障排查](#故障排查)
+- [常见问题](#常见问题)
+- [已知限制](#已知限制)
+- [免责声明](#免责声明)
+- [许可与致谢](#许可与致谢)
+
+---
+
+## 特性
+
+| 特性 | 说明 |
+|---|---|
+| 🎮 **程序开房** | 不需要一台真的开着游戏的手机/模拟器当房主，本程序就是房主 |
+| 📱 **原版客户端进服** | 玩家在网易客户端「本地联机」输入房间号即可，无需任何客户端改动 |
+| 🔀 **字节级转发** | 玩家 NetherNet（WebRTC/SCTP）数据通道上的 Bedrock 数据，原样透传到目标服务器的 RakNet 端口 |
+| 🛡️ **房间自动看护** | 中转连接断开、房间被网易回收时**自动重新开房**；房间号落盘到 `room.json` / `room.txt` |
+| ❤️ **保活与状态** | 周期性确认房间仍在，并打印在线人数 / 运行时长 / 重建次数 |
+| 👥 **多玩家** | 每个玩家一条独立转发链路，互不影响 |
+| 🧰 **自带诊断工具** | 33 个排查/逆向小工具（转发包解码、Java 协议探测、抓包分析……） |
+
+---
+
+## 工作原理
+
+```
+        网易原版客户端（手机 / 模拟器）                    你的服务器
+   ┌────────────────────────────────┐          ┌──────────────────────────────┐
+   │ 本地联机 → 输入房间号 824615   │          │   Geyser (UDP 49780)         │
+   └───────────────┬────────────────┘          │     └── Velocity → Java 后端 │
+                   │ ① 按房间号进房           └───────────────▲──────────────┘
+                   ▼                                          │ ④ RakNet
+   ┌────────────────────────────────┐                         │   [0xFE][批次]
+   │ 网易中转服务器 / 信令服务      │                         │
+   └───────────────┬────────────────┘          ┌──────────────┴───────────────┐
+                   │ ② NetherNet（WebRTC）      │  本程序 NeteaseBedrockGateway│
+                   ▼                            │  ├ 4399 登录 + x19 认证       │
+   ┌────────────────────────────────────────────┤  ├ TanLobby 开房（拿到房间号）│
+   │ ③ 玩家 ↔ 网关：SCTP 数据通道               │  ├ TanNotifyServerReady 上报  │
+   │    [分段数][Minecraft 批次]                │  └ 字节级双向透传             │
+   └────────────────────────────────────────────┴──────────────────────────────┘
+```
+
+1. **4399 登录 + x19 认证** → 拿到 `entity_id` + token。
+2. **开房凭据**：向网易取中转服务器地址与 RakNet/信令密钥。
+3. **连接中转 + 建房**：`TanLoginRequest`（明文）→ `TanCreateRoomRequest`（chacha8，尾部追加房主的 `NetherNetID` 与 `ServerAddress`）→ 服务器返回 **RoomID（房间号）**。
+4. **信令 + NetherNet 监听**：WebSocket 连信令服务器，起 WebRTC 监听等待玩家。
+5. **「开始游戏」机制**：玩家进房时服务器向房主发 `TanNewGuestResponse`(ID 4)，房主必须回 **`TanNotifyServerReady`**(ID 7，含 `NetherNetID` + `ServerAddress`)，服务器再广播给玩家 —— 没有单独的「开始游戏」请求。
+6. **数据面**：网易侧消息 = `[分段数][Bedrock 批次]`，RakNet 侧 = `[0xFE][Bedrock 批次]`；网关只做 `0xFE` 的增删与字节透传，不解析协议、不参与 Bedrock 加密（网易局域网流程本身不加密）。
+7. **看护**：主循环监控「中转连接是否还在」「房间是否还在房间列表里」，任一失效即重建房间并更新落盘文件。
+
+> 逆向细节与报文格式见 [docs/troubleshooting.md](docs/troubleshooting.md)。
+
+---
+
+## 依赖准备（⚠️ 必读）
+
+本项目通过 `go.mod` 的 **本地 replace** 依赖三个模块，它们**不在本仓库内**。请把仓库与这三个模块放在**同一个父目录**下（相对路径 replace 已经配好）：
+
+```
+<父目录>/
+├── NeteaseBedrockGateway/          ← 本仓库
+├── nemc-tan-lobby-solver/          ← 网易本地联机协议实现（★ 需要打补丁，见下）
+├── go-raknet-netease/              ← sandertv/go-raknet 的 fork（RakNet 协议版本 8 = 网易）
+└── FunAuth/
+    └── modules/
+        └── g79client/              ← 4399 登录 API 客户端
+```
+
+```go
+// go.mod
+replace github.com/Yeah114/g79client                   => ../FunAuth/modules/g79client
+replace github.com/Happy2018new/nemc-tan-lobby-solver  => ../nemc-tan-lobby-solver
+replace github.com/sandertv/go-raknet                  => ../go-raknet-netease
+```
+
+如果你的目录结构不同，改 `go.mod` 里这三行即可（也可以换成自己的 git 仓库地址）。
+
+### ★ `nemc-tan-lobby-solver` 必须打一个补丁
+
+不打这个补丁，客户端会「连上了但一个字节都不发」然后超时。补丁内容很短（3 个文件）：
+
+| 文件 | 改动 |
+|---|---|
+| `core/nethernet/conn.go` | 新增 `bindChannelHandlers()`（幂等绑定收发处理器），`handleTransports()` 改为调用它 |
+| `core/nethernet/listener.go` | `OnDataChannelOpened` 里在拿到通道后**立刻** `conn.bindChannelHandlers(channel)`，不要等两个通道都齐 |
+| `core/nethernet/dial.go` | 创建 `ReliableDataChannel` / `UnreliableDataChannel` 后各调用一次 `conn.bindChannelHandlers(...)` |
+
+原因：底层 WebRTC 数据通道一建立就开始读取，而消息处理器原本要等**两个**通道都协商完才注册；网易客户端把 DCEP 握手与第一个游戏包在同一毫秒发出，于是首包被静默丢弃。完整分析与代码片段见
+[**docs/troubleshooting.md → 根因 ①**](docs/troubleshooting.md#根因--nethernet-库丢掉客户端的第一个-bedrock-包)。
+
+### 想直接发布给别人用？
+
+上面的依赖不在本仓库，别人 `git clone` 后无法直接编译。两种做法：
+
+1. **（推荐）把依赖一起 vendor 进来**，仓库自包含：
+
+   ```bash
+   go mod vendor          # 把 replace 的本地模块复制进 vendor/
+   go build -mod=vendor -o NeteaseBedrockGateway ./cmd/gateway
+   ```
+
+   记得删掉 `.gitignore` 里的 `vendor/` 一行，并保留依赖各自的 LICENSE/来源说明。
+2. 把三个依赖推到你自己的仓库，并把 `go.mod` 的 replace 换成仓库地址。
+
+---
+
+## 编译
+
+**要求**：Go **1.25+**（`go.mod` 声明 `go 1.25`）。无需 CGO，全平台可静态构建。
+
+先确认依赖就位：
+
+```bash
+go mod download    # 仅校验依赖能解析；缺失时会提示找不到 replace 目标
+```
+
+### Windows
+
+```powershell
+git clone <你的仓库地址> NeteaseBedrockGateway
+cd NeteaseBedrockGateway
+
+go build -o NeteaseBedrockGateway.exe ./cmd/gateway
+# 可选：顺便编译诊断工具
+go build -o bin/relaydecode.exe ./cmd/diag/relaydecode
+go build -o bin/javaprobe.exe   ./cmd/diag/javaprobe
+
+.\NeteaseBedrockGateway.exe -u "4399账号" -p "密码" -target be.4f4t.top:49780
+```
+
+### Linux / macOS
+
+```bash
+git clone <你的仓库地址> NeteaseBedrockGateway
+cd NeteaseBedrockGateway
+
+go build -o NeteaseBedrockGateway ./cmd/gateway
+chmod +x NeteaseBedrockGateway
+
+./NeteaseBedrockGateway -u "4399账号" -p "密码" -target be.4f4t.top:49780
+```
+
+### 交叉编译
+
+```bash
+# 在 Linux/macOS 上编 Windows 版
+GOOS=windows GOARCH=amd64 go build -o NeteaseBedrockGateway.exe ./cmd/gateway
+
+# 在 Windows PowerShell 上编 Linux 版
+$env:GOOS="linux"; $env:GOARCH="amd64"
+go build -o NeteaseBedrockGateway ./cmd/gateway
+```
+
+> 常见目标：`linux/amd64`、`linux/arm64`（树莓派 / Orange Pi 等）、`windows/amd64`。
+
+### 全部组件一起编译（可选）
+
+```bash
+# Linux/macOS
+go build -o bin/ ./cmd/...
+
+# Windows PowerShell
+Get-ChildItem .\cmd -Directory | ForEach-Object {
+  go build -o "bin\$($_.Name).exe" "./cmd/$($_.Name)"
+}
+```
+
+---
+
+## 使用方法
+
+### 1. 启动网关
+
+```bash
+# Windows
+NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的服务器" -target be.4f4t.top:49780
+
+# Linux
+./NeteaseBedrockGateway -u "房主4399账号" -p "密码" -room-name "我的服务器" -target be.4f4t.top:49780
+```
+
+启动成功后日志：
+
+```
+[房主] 目标服务器: be.4f4t.top:49780，房间信息落盘: room.json，存活检查间隔: 25s
+[1/6] 认证成功: uid=742343904
+[2/6] 凭据就绪: raknet=42.186.165.232:10007 signaling=42.186.165.232:8899
+[3/6] ★ 房间创建成功 RoomID=824615
+[4/6] 房间可查询: HID=2889827552 SRV=8361 RoomUniqueID=3541695895718126
+[6/6] 请在网易客户端"本地联机"输入房间号 824615 加入
+[房主] NetherNet 监听中（NetworkID=11453984968413808426，房间号=824615），等待玩家加入 ...
+[房主] 房间 824615 存活（在线 0 人，累计 0 人，已运行 25s，重建 0 次）
+```
+
+**房间号就是 `RoomID`**，也写在 `room.txt` / `room.json` 里，方便脚本读取。
+
+### 2. 玩家进服
+
+1. 玩家打开网易版 Minecraft → **「本地联机」**
+2. 选择「输入房间号」→ 填入网关打印的房间号（示例 `824615`）
+3. 进房后客户端会自动连接网关并开始加载你的服务器
+
+> 建议加 `-room-password "密码"`，否则任何人知道房间号都能进。
+
+### 3. 目标服务器要求
+
+网易客户端走的是**非标准 Bedrock 链路**（RakNet 协议版本 8、自定义协议版本、不做 Bedrock 层加密），标准 Geyser 无法直接对接，需要在你的 Geyser 上安装配套扩展：
+
+- 扩展仓库：[GeyserNetease](../GeyserNetease)（本项目的配套扩展）
+- 安装位置（按平台）：
+  - Standalone：`extensions/GeyserNeteaseExtension.jar`
+  - Velocity：`plugins/Geyser-Velocity/extensions/GeyserNeteaseExtension.jar`
+  - BungeeCord：`plugins/Geyser-BungeeCord/extensions/GeyserNeteaseExtension.jar`
+  - Spigot/Paper：`plugins/Geyser-Spigot/extensions/GeyserNeteaseExtension.jar`
+- **必须**给扩展设置真实地址（否则握手 hostname 为空，会在 `Geyser → 代理` 这一跳被静默掐断）：
+
+  ```
+  -DGeyserNetease.ServerAddress=你的域名:端口      例如 be.4f4t.top:49780
+  ```
+
+- `-target` 指向 **Geyser 的 RakNet 端口**（UDP，示例里的 `49780`）。
+
+### 4. 常驻运行
+
+**Linux（systemd）** — `/etc/systemd/system/netease-gateway.service`：
+
+```ini
+[Unit]
+Description=NeteaseBedrockGateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/netease-gateway
+ExecStart=/opt/netease-gateway/NeteaseBedrockGateway -u "4399账号" -p "密码" -room-name "我的服务器" -target be.4f4t.top:49780
+Restart=always
+RestartSec=10
+# 房间号写进 /opt/netease-gateway/room.txt
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now netease-gateway
+journalctl -u netease-gateway -f          # 看日志
+cat /opt/netease-gateway/room.txt         # 看当前房间号
+```
+
+**Windows**：用 `nssm` / 任务计划程序把它做成开机自启服务，工作目录设为 exe 所在目录。
+
+> 密码经命令行传入，注意 shell 历史与 systemd unit 文件的权限（`chmod 600`）。
+
+---
+
+## 命令行参数
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `-u` | — | 4399 用户名（**房主账号**，必填） |
+| `-p` | — | 4399 密码（必填） |
+| `-room-name` | `NeteaseBedrockGateway Host Room` | 房间名称（玩家在房间列表里看到） |
+| `-capacity` | `8` | 房间容量 |
+| `-room-password` | 空 | 房间密码（留空 = 无密码） |
+| `-target` | `be.4f4t.top:49780` | 转发目标：**Geyser / BDS 的 RakNet 端口** |
+| `-map-id` | `0` | 房间 MapID（游戏版本标识） |
+| `-protocol-id` | `42` | 房间 ProtocolID（默认 42 与原版房间一致） |
+| `-level-id` | 空 | 房间 LevelID（版本标识字符串） |
+| `-game-type` | `0` | 房间 GameType |
+| `-version-string` | `1.21.120.0` | 房间游戏版本字符串（玩家进房时校验） |
+| `-room-file` | `room.json` | 房间信息落盘文件；同时写同名 `.txt`（只存房间号）。空字符串 = 不落盘 |
+| `-keepalive` | `25s` | 房间存活检查间隔；`0` = 关闭。连续 3 次查不到即判定房间被回收并自动重建 |
+
+---
+
+## 房间状态文件
+
+房间号由**网易服务器分配**（无法指定/固定），网关重启或重建后会拿到新号，因此会把当前状态落盘：
+
+`room.json`
+
+```json
+{
+  "room_id": 824615,
+  "room_name": "debug-test",
+  "target": "be.4f4t.top:49780",
+  "host_nether_id": "11453984968413808426",
+  "status": "alive",
+  "created_at": "2026-10-06T22:36:23+08:00",
+  "updated_at": "2026-10-06T22:36:23+08:00",
+  "recreations": 0
+}
+```
+
+`room.txt`：一行房间号，方便 `cat room.txt` / `type room.txt`。房间失效时 `status` 变 `dead`、`room_id` 归零，随后自动重建并刷新。
+
+---
+
+## 目录结构
+
+```
+NeteaseBedrockGateway/
+├── cmd/
+│   ├── gateway/              ★ 主程序（房主网关）
+│   │   ├── main.go           协议细节（TanCreateRoom、connectTan、hostReadLoop、玩家转发）
+│   │   └── gateway.go        生命周期（登录/凭据刷新/开房/保活/自动重建/落盘）
+│   ├── funauth4399/          4399 登录 + 认证 + 开房凭据（CLI 演示）
+│   └── diag/                 诊断与逆向小工具（33 个，见下节）
+├── internal/
+│   ├── auth/                 4399 OAuth 登录 + x19 认证
+│   ├── room/                 开房凭据生成（TanLobbyCreate）
+│   └── wplauncher/           4399X19Login 登录库（复制自 DHY0627/4399X19Login，MIT）
+├── tools/frida/              逆向网易客户端用的 frida 脚本
+├── docs/
+│   ├── troubleshooting.md    两个「静默失败」的完整排查记录 + 排查手法
+│   └── captures/             抓包与 hex 证据（含账号 token，**默认不入库**）
+├── room.json / room.txt      运行时房间状态（不入库）
+├── host.log / relay.log      运行时日志与转发包记录（不入库）
+├── README.md / LICENSE / .gitignore
+└── go.mod / go.sum
+```
+
+---
+
+## 诊断工具
+
+位于 `cmd/diag/`，全部是独立 `main`：
+
+```bash
+go run ./cmd/diag/<名字>
+# 或编译：go build -o bin/<名字> ./cmd/diag/<名字>
+```
+
+| 工具 | 用途 |
+|---|---|
+| `relaydecode` | **把 `relay.log` 的原始 hex 解码成 Bedrock 包列表**（剥 `0xFE`、解压、逐帧解析） |
+| `javaprobe` | 直接对 Java 服务端做状态查询/离线登录，独立验证 `Geyser → Velocity` 这一跳 |
+| `ghost` | 幽灵玩家：用凭据加入别人开的真实房间，观察真实房主行为 |
+| `join` | 用第二个账号走完「查询房间 → 进房 → 连房主」链路 |
+| `logindump` / `verifyrebuild` | 解析玩家 Login 包；校验「解析→重建」是否与原始字节一致 |
+| `chaininfo` / `x5ucheck` / `jwtdump` / `jwtsig` / `hsdecode` | 身份链与握手 JWT 的结构 / 签名 / 公钥分析 |
+| `forge` / `rewrite` | 伪造或改写身份链（探测服务端校验策略） |
+| `fecheck` / `deflateprobe` / `dectest` | 帧头（`0xFE`）、deflate、压缩方式实验 |
+| `rakdec` / `rakdial` / `rakdbg` / `rakreq2` / `rawrelay` / `gordial` / `udpping` | RakNet 层解析、连接与握手实验 |
+| `pcapsum` | 简易 pcap 概览（UDP 流 / 包数 / 时间戳） |
+| `tandec` / `tansolve` / `lensim` / `dec412` | TanLobby 报文解码与长度对照 |
+| `mctest` | 用 go-raknet + solver 的 minecraft 层连 Geyser 验证完整握手 |
+
+---
+
+## 故障排查
+
+```bash
+# 1. 看转发记录（完整 hex：谁发了什么）
+cat relay.log            # Windows: type relay.log
+
+# 2. 解码成人可读的包列表
+go run ./cmd/diag/relaydecode relay.log
+
+# 3. 单独验证 Java 侧（不经过网易客户端）
+go run ./cmd/diag/javaprobe -addr be.4f4t.top:25565 -mode status
+go run ./cmd/diag/javaprobe -addr be.4f4t.top:25565 -mode login -name TestPlayer
+```
+
+| 症状 | 先看哪里 | 多半是 |
+|---|---|---|
+| 客户端一直「等待房主开始游戏」 | 网关日志有没有 `新玩家加入房间` + `已向玩家上报 NetherNetID` | `TanNotifyServerReady` 没发或发早了 |
+| 客户端连上但**零数据**、90 秒超时、`relay.log` 不生成 | `host.log` 中 `收到玩家连接` 之后 | 依赖 `nemc-tan-lobby-solver` 没打补丁（见[依赖准备](#依赖准备-必读)） |
+| 客户端显示 **`数据流终止`**，Geyser 日志同款，Velocity 无日志 | 扩展嗅探日志（`-DGeyserNetease.Sniff=true`） | Geyser 的 java 握手 hostname 为空 → 设置 `-DGeyserNetease.ServerAddress` |
+| Geyser 报「服务器已过期/版本不支持」 | Geyser 日志 | 目标服缺 GeyserNetease 扩展，或扩展版本过旧 |
+| 房间突然消失 | 网关日志有没有「房间存活检查失败」 | 房间被网易回收 → 新版会自动重建 |
+| 启动就报 4399 登录失败 | —— | 账号密码错误，或触发登录限频（等 1~3 分钟） |
+
+更完整的排查方法论见 [docs/troubleshooting.md](docs/troubleshooting.md)。
+
+---
+
+## 常见问题
+
+**Q：玩家需要装 mod 吗？**
+A：不需要。玩家用网易版原版客户端，只需要一个房间号。
+
+**Q：可以固定房间号吗？**
+A：不行。房间号由网易服务器分配，网关重建后会变；请用 `room.txt` / `room.json` 读取当前房间号。
+
+**Q：国际版（非网易）基岩版玩家能进吗？**
+A：能，通过你服务器上原有的 Geyser 正常进（扩展默认 `only-netease-clients: false`，两者并存）。
+
+**Q：Java 版玩家受影响吗？**
+A：完全不受影响。
+
+**Q：一个网关能同时让几个玩家进？**
+A：每个玩家一条独立转发链路，理论上受房间容量（`-capacity`）与带宽限制；实测单玩家延迟与直连 Geyser 相当。
+
+**Q：能同时开多个房间吗？**
+A：可以，用不同 4399 账号、不同工作目录各跑一个进程即可。
+
+**Q：为什么必须给 Geyser 装扩展？**
+A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且不做 Bedrock 层加密；标准 Geyser 无法直接对接。
+
+---
+
+## 已知限制
+
+- **房间号不可指定**：由网易服务器分配，每次开房/重建都可能不同（已落盘便于读取）。
+- **4399 登录限频**：实测两次登录需间隔 60~180 秒；网关只在凭据连续失败后才重新登录，并对失败做 60 秒退避。
+- **同一账号不能既当房主又用客户端进房**：房主账号被网易视为「已在房间中」。
+- **目标服务器需要配套扩展**：见[目标服务器要求](#3-目标服务器要求)。
+- **协议为逆向所得**：网易更新协议后可能需要跟进；本项目已验证协议版本 **630 / 686 / 766 / 819 / 860**。
+- **密码经命令行传入**：注意 shell 历史与 unit 文件权限。
+
+---
+
+## 免责声明
+
+本项目仅用于**协议学习与自用**。使用即意味着：你的 4399/网易账号会执行「开房」行为，存在被风控或封禁的风险，请自行评估并承担后果。请勿用于商业用途、批量开房、绕过付费/风控或任何破坏性场景。
+
+`docs/captures/` 中的抓包证据**包含真实账号的身份链与 token**，已通过 `.gitignore` 排除 —— 请勿提交或外传。
+
+---
+
+## 许可与致谢
+
+- 本项目：[MIT](LICENSE)
+- 协议实现：[Happy2018new/nemc-tan-lobby-solver](https://github.com/Happy2018new/nemc-tan-lobby-solver)（本项目对其 `core/nethernet` 打了首包丢失补丁）
+- RakNet fork：`sandertv/go-raknet`（网易 RakNet 协议版本 8）
+- 4399 登录：[DHY0627/4399X19Login](https://github.com/DHY0627/4399X19Login)（MIT，见 `internal/wplauncher`）
+- 基岩版协议：[GeyserMC/Geyser](https://github.com/GeyserMC/Geyser) 与配套扩展 [GeyserNetease](../GeyserNetease)
+- 思路参考：[Koud-Wind/Netease-minecraft-LAN-connects-to-Server](https://github.com/Koud-Wind/Netease-minecraft-LAN-connects-to-Server)（Java 版同思路）

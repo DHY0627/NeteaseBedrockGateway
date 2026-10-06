@@ -1,0 +1,23 @@
+# 统一换行符：仓库里存 LF，检出时按平台处理；脚本强制 LF
+* text=auto
+
+*.go        text eol=lf
+*.mod       text eol=lf
+*.sum       text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.ps1       text eol=crlf
+*.sh        text eol=lf
+
+# 二进制/证据文件不做任何文本转换
+*.exe       binary
+*.dll       binary
+*.pcap      binary
+*.pcapng    binary
+*.hex       binary
+*.jar       binary
+*.png       binary
+*.jpg       binary
+*.zip       binary

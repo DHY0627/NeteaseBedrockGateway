@@ -42,6 +42,6 @@ require (
 
 replace github.com/Yeah114/g79client => ../FunAuth/modules/g79client
 
-replace github.com/Happy2018new/nemc-tan-lobby-solver => ../nemc-tan-lobby-solver
+replace github.com/Happy2018new/nemc-tan-lobby-solver => github.com/DHY0627/nemc-tan-lobby-solver v0.0.0-20261006154354-f2649a16ba10
 
 replace github.com/sandertv/go-raknet => ../go-raknet-netease

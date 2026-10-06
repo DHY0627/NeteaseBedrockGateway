@@ -332,7 +332,7 @@ go run ./cmd/diag/javaprobe -addr be.4f4t.top:25565 -mode login -name TestPlayer
 | 症状 | 先看哪里 | 多半是 |
 |---|---|---|
 | 客户端一直「等待房主开始游戏」 | 网关日志有没有 `新玩家加入房间` + `已向玩家上报 NetherNetID` | `TanNotifyServerReady` 没发或发早了 |
-| 客户端连上但**零数据**、90 秒超时、`relay.log` 不生成 | `host.log` 中 `收到玩家连接` 之后 | 依赖 `nemc-tan-lobby-solver` 没打补丁（见[编译前置](#编译前置本仓库不能直接-go-build)） |
+| 客户端连上但**零数据**、90 秒超时、`relay.log` 不生成 | `host.log` 中 `收到玩家连接` 之后 | 依赖 `nemc-tan-lobby-solver` 没打补丁（见 [依赖与许可](#依赖与许可dependencies--licenses) 的 fork 说明） |
 | 客户端显示 **`数据流终止`**，Geyser 日志同款，Velocity 无日志 | 扩展嗅探日志（`-DGeyserNetease.Sniff=true`） | Geyser 的 java 握手 hostname 为空 → 设置 `-DGeyserNetease.ServerAddress` |
 | Geyser 报「服务器已过期/版本不支持」 | Geyser 日志 | 目标服缺 GeyserNetease 扩展，或扩展版本过旧 |
 | 房间突然消失 | 网关日志有没有「房间存活检查失败」 | 房间被网易回收 → 新版会自动重建 |
@@ -403,8 +403,14 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 
 | 依赖 | 本项目的 fork | 上游 | 我们改了什么 |
 |---|---|---|---|
-| `nemc-tan-lobby-solver` | [DHY0627/nemc-tan-lobby-solver](https://github.com/DHY0627/nemc-tan-lobby-solver)（筹备中） | [UCKETX/nemc-tan-lobby-solver](https://github.com/UCKETX/nemc-tan-lobby-solver)（**无 LICENSE**） | NetherNet 不丢首包、不可靠通道、Geyser Secure Cookie、SCTP CRC32C 小端、TanLobby 编解码补充（共 14 个文件，清单见 fork 的 `FORK-NOTICE.md`） |
+| `nemc-tan-lobby-solver` | [DHY0627/nemc-tan-lobby-solver](https://github.com/DHY0627/nemc-tan-lobby-solver) | [UCKETX/nemc-tan-lobby-solver](https://github.com/UCKETX/nemc-tan-lobby-solver)（**无 LICENSE**） | NetherNet 不丢首包、不可靠通道、Geyser Secure Cookie、SCTP CRC32C 小端、TanLobby 编解码补充（共 14 个文件，清单见 fork 的 `FORK-NOTICE.md`） |
 | `sandertv/go-raknet` | `go-raknet-netease` | [sandertv/go-raknet](https://github.com/sandertv/go-raknet) `v1.15.1`（MIT） | `conn.go`：`protocolVersion` 由 `11` 改为 `8`（网易 RakNet 版本） |
+
+> `go.mod` 里 solver 的 fork 已按**伪版本**直接指向 GitHub：
+> `replace github.com/Happy2018new/nemc-tan-lobby-solver => github.com/DHY0627/nemc-tan-lobby-solver v0.0.0-20261006154354-f2649a16ba10`
+> （fork 的 `go.mod` 仍声明上游模块路径，这是 Go 支持的标准 fork 替换写法；`vendor/` 里的代码就是该提交，`vendor/modules.txt` 里有对应记录。）
+> 想跟上 fork 的新提交：`go mod edit -replace github.com/Happy2018new/nemc-tan-lobby-solver=github.com/DHY0627/nemc-tan-lobby-solver@v0.0.0-<提交的UTC时间戳>-<12位hash>`，然后 `go mod vendor`。
+> `go-raknet` 的 fork 目前仍是相对路径 `../go-raknet-netease`：只**编译**本仓库不需要它（`vendor/` 已含全部代码），只有要重新 `go mod vendor` 时才需要把它放在同级目录。
 
 > ⚠️ `nemc-tan-lobby-solver` 上游**没有许可证文件**（fork 亦未新增），版权归原作者；本机自用不受分发条款约束，若要再分发请先联系原作者取得许可。
 

@@ -20,10 +20,12 @@ package main
 
 import (
 	"bytes"
+	"compress/flate"
 	"context"
 	"crypto/rand"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net"
@@ -288,6 +290,9 @@ func handlePlayer(ctx context.Context, playerConn *nethernet.Conn, target string
 		for {
 			data, err := playerConn.ReadPacket()
 			if err != nil {
+				// 这一行是判断「哪一侧先断」的关键：以前这里是静默 return，
+				// 导致 玩家连接结束 时完全看不出是谁断的、为什么断。
+				log.Printf("[转发] 玩家侧数据通道结束: %v", err)
 				close(pending)
 				return
 			}
@@ -302,6 +307,7 @@ func handlePlayer(ctx context.Context, playerConn *nethernet.Conn, target string
 		for {
 			data, err := playerConn.ReadUnreliablePacket()
 			if err != nil {
+				log.Printf("[转发] 玩家侧不可靠通道结束: %v", err)
 				return
 			}
 			relayLogLine("[玩家→(不可靠)]", data)
@@ -346,46 +352,49 @@ func handlePlayer(ctx context.Context, playerConn *nethernet.Conn, target string
 	//   客户端发来的未压缩 [0xFF][帧] 重新以 [0x00][raw-deflate] 压缩给 Geyser。
 	var rstate relayState
 
-	done := make(chan struct{}, 2)
+	done := make(chan string, 2)
 
 	// 玩家 → 目标服务器
 	go func() {
-		defer func() { done <- struct{}{} }()
-		// 先转发 dial 期间缓冲的包
 		for data := range pending {
 			log.Printf("[转发] 玩家→服务器 %d 字节: %x", len(data), data[:min(len(data), 64)])
 			relayLogLine("[玩家→服务器]", data)
 			out := playerToServer(&rstate, data)
 			if _, err := netConn.Write(out); err != nil {
+				done <- fmt.Sprintf("写入目标服务器失败: %v", err)
 				return
 			}
 		}
+		done <- "玩家侧不再有数据（玩家通道已关闭）"
 	}()
 
 	// 目标服务器 → 玩家
 	go func() {
-		defer func() { done <- struct{}{} }()
 		buf := make([]byte, 65536)
 		for {
 			n, err := netConn.Read(buf)
 			if err != nil {
+				done <- fmt.Sprintf("目标服务器连接结束: %v", err)
 				return
 			}
 			log.Printf("[转发] 服务器→玩家 %d 字节: %x", n, buf[:min(n, 64)])
+			if id, ok := bedrockPacketID(buf[:n]); ok {
+				log.Printf("[转发]   └ 包 ID=%d (%s)", id, bedrockPacketName(id))
+			}
 			relayLogLine("[服务器→玩家]", buf[:n])
 			out, err := serverToPlayer(&rstate, buf[:n])
 			if err != nil {
-				log.Printf("[转发] 服务器→玩家转译失败: %v", err)
+				done <- fmt.Sprintf("服务器→玩家转译失败: %v", err)
 				return
 			}
 			if _, err := playerConn.Write(out); err != nil {
+				done <- fmt.Sprintf("写回玩家失败: %v", err)
 				return
 			}
 		}
 	}()
 
-	<-done
-	log.Printf("[转发] 玩家连接结束")
+	log.Printf("[转发] 玩家连接结束（%s）", <-done)
 }
 
 // relayPhase 表示中继所处的登录阶段。
@@ -450,6 +459,248 @@ func readVarint(b []byte) (uint32, int) {
 	}
 	return 0, 0
 }
+
+// bedrockPacketID 尝试从一帧「服务器→玩家」数据里取出 Bedrock 包 ID，用于日志。
+//
+// 帧格式（已用 relay.log 实测确认）：
+//
+//	压缩开启前（如 NetworkSettingsResponse）：[0xFE][varint 长度][包 ID][载荷]
+//	压缩开启后：                              [0xFE][0x00 = raw-deflate][deflate 数据]
+//	                                         解压后为 [varint 长度][包 ID][载荷]
+//
+// 只对小于 4KB 的帧解码：世界数据（块）动辄几十 KB，为打日志去解压它们不值得，
+// 而真正需要看清楚的恰恰是那些小的控制包（PlayStatus / Disconnect / 各类请求）。
+//
+// 失败时返回 (0,false)，绝不 panic —— 这纯粹是诊断信息，不能影响转发。
+func bedrockPacketID(raw []byte) (uint16, bool) {
+	if len(raw) < 4 || len(raw) > 4096 {
+		return 0, false
+	}
+	if raw[0] != 0xFE {
+		return 0, false
+	}
+	var body []byte
+	if raw[1] == 0x00 {
+		zr := flate.NewReader(bytes.NewReader(raw[2:]))
+		defer zr.Close()
+		out := make([]byte, 512)
+		n, _ := io.ReadFull(zr, out)
+		if n < 2 {
+			return 0, false
+		}
+		body = out[:n]
+	} else {
+		body = raw[1:]
+	}
+	// [varint 长度][包 ID]
+	_, m := readVarint(body)
+	if m == 0 || m >= len(body) {
+		return 0, false
+	}
+	return uint16(body[m]), true
+}
+
+// bedrockPacketName 给常见的 Bedrock 包 ID 一个可读名字（仅用于日志）。
+// ID 取自 solver 的 minecraft/protocol/packet/id.go。
+func bedrockPacketName(id uint16) string {
+	if n, ok := bedrockPacketNames[id]; ok {
+		return n
+	}
+	return "未知"
+}
+
+var bedrockPacketNames = map[uint16]string{
+	1: "Login",
+	2: "PlayStatus",
+	3: "ServerToClientHandshake",
+	4: "ClientToServerHandshake",
+	5: "Disconnect",
+	6: "ResourcePacksInfo",
+	7: "ResourcePackStack",
+	8: "ResourcePackClientResponse",
+	9: "Text",
+	10: "SetTime",
+	11: "StartGame",
+	12: "AddPlayer",
+	13: "AddActor",
+	14: "RemoveActor",
+	15: "AddItemActor",
+	17: "TakeItemActor",
+	18: "MoveActorAbsolute",
+	19: "MovePlayer",
+	20: "PassengerJump",
+	21: "UpdateBlock",
+	22: "AddPainting",
+	23: "TickSync",
+	25: "LevelEvent",
+	26: "BlockEvent",
+	27: "ActorEvent",
+	28: "MobEffect",
+	29: "UpdateAttributes",
+	30: "InventoryTransaction",
+	31: "MobEquipment",
+	32: "MobArmourEquipment",
+	33: "Interact",
+	34: "BlockPickRequest",
+	35: "ActorPickRequest",
+	36: "PlayerAction",
+	38: "HurtArmour",
+	39: "SetActorData",
+	40: "SetActorMotion",
+	41: "SetActorLink",
+	42: "SetHealth",
+	43: "SetSpawnPosition",
+	44: "Animate",
+	45: "Respawn",
+	46: "ContainerOpen",
+	47: "ContainerClose",
+	48: "PlayerHotBar",
+	49: "InventoryContent",
+	50: "InventorySlot",
+	51: "ContainerSetData",
+	52: "CraftingData",
+	54: "GUIDataPickItem",
+	55: "AdventureSettings",
+	56: "BlockActorData",
+	57: "PlayerInput",
+	58: "LevelChunk",
+	59: "SetCommandsEnabled",
+	60: "SetDifficulty",
+	61: "ChangeDimension",
+	62: "SetPlayerGameType",
+	63: "PlayerList",
+	64: "SimpleEvent",
+	65: "Event",
+	66: "SpawnExperienceOrb",
+	67: "ClientBoundMapItemData",
+	68: "MapInfoRequest",
+	69: "RequestChunkRadius",
+	70: "ChunkRadiusUpdated",
+	72: "GameRulesChanged",
+	73: "Camera",
+	74: "BossEvent",
+	75: "ShowCredits",
+	76: "AvailableCommands",
+	77: "CommandRequest",
+	78: "CommandBlockUpdate",
+	79: "CommandOutput",
+	80: "UpdateTrade",
+	81: "UpdateEquip",
+	82: "ResourcePackDataInfo",
+	83: "ResourcePackChunkData",
+	84: "ResourcePackChunkRequest",
+	85: "Transfer",
+	86: "PlaySound",
+	87: "StopSound",
+	88: "SetTitle",
+	89: "AddBehaviourTree",
+	90: "StructureBlockUpdate",
+	91: "ShowStoreOffer",
+	92: "PurchaseReceipt",
+	93: "PlayerSkin",
+	94: "SubClientLogin",
+	95: "AutomationClientConnect",
+	96: "SetLastHurtBy",
+	97: "BookEdit",
+	98: "NPCRequest",
+	99: "PhotoTransfer",
+	100: "ModalFormRequest",
+	101: "ModalFormResponse",
+	102: "ServerSettingsRequest",
+	103: "ServerSettingsResponse",
+	104: "ShowProfile",
+	105: "SetDefaultGameType",
+	106: "RemoveObjective",
+	107: "SetDisplayObjective",
+	108: "SetScore",
+	109: "LabTable",
+	110: "UpdateBlockSynced",
+	111: "MoveActorDelta",
+	112: "SetScoreboardIdentity",
+	113: "SetLocalPlayerAsInitialised",
+	114: "UpdateSoftEnum",
+	115: "NetworkStackLatency",
+	118: "SpawnParticleEffect",
+	119: "AvailableActorIdentifiers",
+	121: "NetworkChunkPublisherUpdate",
+	122: "BiomeDefinitionList",
+	123: "LevelSoundEvent",
+	124: "LevelEventGeneric",
+	125: "LecternUpdate",
+	129: "ClientCacheStatus",
+	130: "OnScreenTextureAnimation",
+	131: "MapCreateLockedCopy",
+	132: "StructureTemplateDataRequest",
+	133: "StructureTemplateDataResponse",
+	135: "ClientCacheBlobStatus",
+	136: "ClientCacheMissResponse",
+	137: "EducationSettings",
+	138: "Emote",
+	139: "MultiPlayerSettings",
+	140: "SettingsCommand",
+	141: "AnvilDamage",
+	142: "CompletedUsingItem",
+	143: "NetworkSettings",
+	144: "PlayerAuthInput",
+	145: "CreativeContent",
+	146: "PlayerEnchantOptions",
+	147: "ItemStackRequest",
+	148: "ItemStackResponse",
+	149: "PlayerArmourDamage",
+	150: "CodeBuilder",
+	151: "UpdatePlayerGameType",
+	152: "EmoteList",
+	153: "PositionTrackingDBServerBroadcast",
+	154: "PositionTrackingDBClientRequest",
+	155: "DebugInfo",
+	156: "PacketViolationWarning",
+	157: "MotionPredictionHints",
+	158: "AnimateEntity",
+	159: "CameraShake",
+	160: "PlayerFog",
+	161: "CorrectPlayerMovePrediction",
+	162: "ItemComponent",
+	163: "FilterText",
+	164: "ClientBoundDebugRenderer",
+	165: "SyncActorProperty",
+	166: "AddVolumeEntity",
+	167: "RemoveVolumeEntity",
+	168: "SimulationType",
+	169: "NPCDialogue",
+	170: "EducationResourceURI",
+	171: "CreatePhoto",
+	172: "UpdateSubChunkBlocks",
+	173: "PhotoInfoRequest",
+	174: "SubChunk",
+	175: "SubChunkRequest",
+	176: "ClientStartItemCooldown",
+	177: "ScriptMessage",
+	178: "CodeBuilderSource",
+	179: "TickingAreasLoadStatus",
+	180: "DimensionData",
+	181: "AgentAction",
+	182: "ChangeMobProperty",
+	183: "LessonProgress",
+	184: "RequestAbility",
+	185: "RequestPermissions",
+	186: "ToastRequest",
+	187: "UpdateAbilities",
+	188: "UpdateAdventureSettings",
+	189: "DeathInfo",
+	190: "EditorNetwork",
+	191: "FeatureRegistry",
+	192: "ServerStats",
+	193: "RequestNetworkSettings",
+	194: "GameTestRequest",
+	195: "GameTestResults",
+	196: "UpdateClientInputLocks",
+	197: "ClientCheatAbility",
+	198: "CameraPresets",
+	199: "UnlockedRecipes",
+	200: "PyRpc",
+	203: "NeteaseJson",
+}
+
 
 // raknetDial 用 sandertv/go-raknet 连接目标服务器（兼容 BDS/Geyser/cloudburst）。
 // 强制 10 秒超时，避免 go-raknet 无限重试。

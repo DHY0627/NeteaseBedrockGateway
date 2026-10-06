@@ -50,6 +50,19 @@ type session struct {
 	dec        *packet.Decoder
 }
 
+// defaultLevelID 是房间的「游戏版本标识」，base64 编码的 8 字节值
+// （解码为 AF A6 21 41 D9 F2 E8 B5），对应游戏版本 1.21.120.0。
+//
+// 该值与 VersionString（"1.21.120.0"）一起放在 RoomTips 里，网易客户端加入房间时
+// 用它校验版本一致性。**留空会导致玩家能进房间、但无法「开始游戏」**：
+// 客户端拿不到可识别的版本标识，就不会去建立 NetherNet 连接，
+// 网关侧表现为只收到 TanNewGuestResponse、之后完全没有玩家拨入
+// （没有任何 handleOffer / ICE 日志）。
+//
+// 取值来自逆向真实客户端创建房间时的报文（见 cmd/diag/lensim）。
+// 若玩家使用的游戏版本不同，这个值可能需要一并更换。
+const defaultLevelID = "r6YhQdny6LU="
+
 func main() {
 	var (
 		username     = flag.String("u", "", "4399 用户名")
@@ -61,7 +74,7 @@ func main() {
 		serverAddr   = flag.String("server-address", "", "上报给网易的房主地址（玩家据此连房主）。留空则与 -target 相同；二者不同时才需要单独指定")
 		mapID        = flag.Uint64("map-id", 0, "房间 MapID（游戏版本标识）")
 		protocolID   = flag.Uint("protocol-id", 42, "房间 ProtocolID（默认 42 匹配真实房间）")
-		levelID      = flag.String("level-id", "", "房间 LevelID（版本标识字符串）")
+		levelID      = flag.String("level-id", defaultLevelID, "房间 LevelID：游戏版本标识（base64 的 8 字节）。默认值对应 1.21.120.0，留空会导致玩家进了房间却无法开始游戏")
 		gameType     = flag.Uint("game-type", 0, "房间 GameType")
 		versionStr   = flag.String("version-string", "1.21.120.0", "房间游戏版本字符串（玩家校验用）")
 		roomFile     = flag.String("room-file", "room.json", "房间信息落盘文件（同时写同名 .txt 只存房间号；空字符串=不落盘）")

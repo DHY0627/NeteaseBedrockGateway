@@ -292,11 +292,18 @@ cat /opt/netease-gateway/room.txt         # 看当前房间号
 | `-server-address` | 空（= 继承 `-target`）                 | **上报给网易的房主地址**：玩家去哪找房主（NetherNet 入口）。只有与 `-target` 不同才需要写 |
 | `-map-id`         | `0`                               | 房间 MapID（游戏版本标识）                         |
 | `-protocol-id`    | `42`                              | 房间 ProtocolID（默认 42 与原版房间一致）             |
-| `-level-id`       | 空                                 | 房间 LevelID（版本标识字符串）                      |
+| `-level-id`       | `r6YhQdny6LU=`                    | 房间**游戏版本标识**（base64 的 8 字节）。⚠️ **别改成空**：留空会导致玩家能进房间但**无法开始游戏**（详见下方说明） |
 | `-game-type`      | `0`                               | 房间 GameType                              |
 | `-version-string` | `1.21.120.0`                      | 房间游戏版本字符串（玩家进房时校验）                       |
 | `-room-file`      | `room.json`                       | 房间信息落盘文件；同时写同名 `.txt`（只存房间号）。空字符串 = 不落盘  |
 | `-keepalive`      | `25s`                             | 房间存活检查间隔；`0` = 关闭。连续 3 次查不到即判定房间被回收并自动重建 |
+
+> ⚠️ **`-level-id` 不要留空。**
+> 它是房间的「游戏版本标识」（`r6YhQdny6LU=` 解码后是 8 字节 `AF A6 21 41 D9 F2 E8 B5`，对应 1.21.120.0），
+> 和 `-version-string` 一起放进 RoomTips，供网易客户端进房时做**版本一致性校验**。
+> 留空的话：玩家**能进房间**、网关也能收到 `★ 新玩家加入房间`，但客户端**不会去建立 NetherNet 连接** ——
+> 表现为一直卡在「等待房主开始游戏」，网关日志里**永远不会出现 `★ 收到玩家连接`，也没有任何 ICE 日志**。
+> 该值来自逆向真实客户端的建房报文（见 `cmd/diag/lensim`）。若玩家用的游戏版本与此不同，可能需要更换。
 
 ---
 
@@ -396,7 +403,7 @@ go run ./cmd/diag/javaprobe -addr example.com:25565 -mode login -name TestPlayer
 
 | 症状 | 先看哪里 | 多半是 |
 |---|---|---|
-| 客户端一直「等待房主开始游戏」，且日志里**没有** `★ 收到玩家连接` | 启动日志里打印的「上报房主地址」是不是玩家能连到的地址 | `-server-address` / `-target` 填错，玩家拿到的是连不上的 NetherNet 入口 |
+| 客户端能进房间但**卡在「等待房主开始游戏」**，日志有 `★ 新玩家加入房间` 却**没有** `★ 收到玩家连接`，也**没有任何 ICE 日志** | 启动参数里的 `-level-id` 是不是空的 | **`-level-id` 留空** → 房间版本标识无效，客户端不做 NetherNet 连接（这是最容易踩的坑） |
 | 客户端一直「等待房主开始游戏」，但日志里**有** `已向玩家上报 NetherNetID` | `TanNotifyServerReady` 是否发出 | `TanNotifyServerReady` 没发或发早了 |
 | 客户端连上但**零数据**、90 秒超时、`relay.log` 不生成 | 启动日志（标准输出）里 `收到玩家连接` 之后 | 依赖 `nemc-tan-lobby-solver` 没打补丁（见 [依赖与许可](#依赖与许可dependencies--licenses) 的 fork 说明） |
 | 客户端显示 **`数据流终止`**，Geyser 日志同款，Velocity 无日志 | 扩展嗅探日志（`-DGeyserNetease.Sniff=true`） | Geyser 的 java 握手 hostname 为空 → 设置 `-DGeyserNetease.ServerAddress` |

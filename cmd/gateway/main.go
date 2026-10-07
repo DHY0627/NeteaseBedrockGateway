@@ -47,7 +47,7 @@ import (
 
 // netherMsgLimit 是转发给玩家的单条 NetherNet 消息上限（字节，0=不限制）。
 // 由 -nether-msg-limit 设置，供 handlePlayer 使用（它不直接拿得到 flag）。
-var netherMsgLimit = 262144
+var netherMsgLimit = 0
 
 type session struct {
 	raknetConn *raknet.Conn
@@ -87,7 +87,7 @@ func main() {
 		// 网易客户端在 SDP 里声明 a=max-message-size:262144（256KB）。
 		// 超过它的帧一律不转发：实测 Geyser 会发来 30 万字节级的块数据帧，
 		// 直接转发会让客户端在若干秒后闪退。设为 0 可关闭该保护。
-		netherMsgLimitFlag = flag.Int("nether-msg-limit", 262144, "转发给玩家的单条 NetherNet 消息上限（字节，0=不限制）；超过则丢弃并记日志")
+		netherMsgLimitFlag = flag.Int("nether-msg-limit", 0, "诊断开关：转发给玩家的单条 NetherNet 消息上限（字节，0=不限制）。设成 262144 会把超过客户端 max-message-size 的帧【丢弃】（会丢区块，仅用于排查）")
 	)
 	flag.Parse()
 	netherMsgLimit = *netherMsgLimitFlag

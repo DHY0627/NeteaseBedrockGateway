@@ -45,6 +45,10 @@ import (
 	gorsk "github.com/sandertv/go-raknet"
 )
 
+// netherMsgLimit 是转发给玩家的单条 NetherNet 消息上限（字节，0=不限制）。
+// 由 -nether-msg-limit 设置，供 handlePlayer 使用（它不直接拿得到 flag）。
+var netherMsgLimit = 262144
+
 type session struct {
 	raknetConn *raknet.Conn
 	enc        *packet.Encoder
@@ -80,8 +84,13 @@ func main() {
 		versionStr   = flag.String("version-string", "1.21.120.0", "房间游戏版本字符串（玩家校验用）")
 		roomFile     = flag.String("room-file", "room.json", "房间信息落盘文件（同时写同名 .txt 只存房间号；空字符串=不落盘）")
 		keepalive    = flag.Duration("keepalive", 25*time.Second, "房间存活检查间隔（0=关闭；连续 3 次查不到即自动重建房间）")
+		// 网易客户端在 SDP 里声明 a=max-message-size:262144（256KB）。
+		// 超过它的帧一律不转发：实测 Geyser 会发来 30 万字节级的块数据帧，
+		// 直接转发会让客户端在若干秒后闪退。设为 0 可关闭该保护。
+		netherMsgLimitFlag = flag.Int("nether-msg-limit", 262144, "转发给玩家的单条 NetherNet 消息上限（字节，0=不限制）；超过则丢弃并记日志")
 	)
 	flag.Parse()
+	netherMsgLimit = *netherMsgLimitFlag
 	if *username == "" || *password == "" || *target == "" {
 		fmt.Fprintln(os.Stderr, "用法: NeteaseBedrockGateway -u 用户名 -p 密码 -target 服务器IP/域名:端口 [-server-address 房主地址] [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔]")
 		if *username != "" && *password != "" && *target == "" {
@@ -379,13 +388,37 @@ func handlePlayer(ctx context.Context, playerConn *nethernet.Conn, target string
 	// 经分片重组后很容易超过 64KB，用固定缓冲区必然踩到，
 	// 表现为世界生成到一半突然断线。ReadPacket 返回完整包，没有大小限制。
 	go func() {
+		var oversize, oversizeBytes, oversizeMax int
 		for {
 			pk, err := netConn.ReadPacket()
 			if err != nil {
+				if oversize > 0 {
+					log.Printf("[转发] 本次连接共丢弃 %d 个超过 %d 字节的帧（最大 %d 字节，合计 %d 字节）",
+						oversize, netherMsgLimit, oversizeMax, oversizeBytes)
+				}
 				done <- fmt.Sprintf("目标服务器连接结束: %v", err)
 				return
 			}
 			n := len(pk)
+			// 去掉 0xFE 帧头后才是真正写到 NetherNet 的消息长度
+			msgLen := n - 1
+			if netherMsgLimit > 0 && msgLen > netherMsgLimit {
+				// NetherNet 单条消息不能超过对端在 SDP 里声明的 max-message-size
+				// （网易客户端声明 262144）。实测 Geyser 会发来 30 万字节级的
+				// 块数据帧，超过上限时客户端会在若干秒后闪退 —— 疑似其接收缓冲区
+				// 按声明的上限分配，越界写坏了内存。
+				oversize++
+				oversizeBytes += msgLen
+				if msgLen > oversizeMax {
+					oversizeMax = msgLen
+				}
+				log.Printf("[转发] 服务器→玩家 %d 字节 超过 max-message-size(%d)，丢弃该帧（第 %d 个）",
+					msgLen, netherMsgLimit, oversize)
+				if id, ok := bedrockPacketID(pk); ok {
+					log.Printf("[转发]   └ 被丢弃的包 ID=%d (%s)", id, bedrockPacketName(id))
+				}
+				continue
+			}
 			log.Printf("[转发] 服务器→玩家 %d 字节: %x", n, pk[:min(n, 64)])
 			if id, ok := bedrockPacketID(pk); ok {
 				log.Printf("[转发]   └ 包 ID=%d (%s)", id, bedrockPacketName(id))

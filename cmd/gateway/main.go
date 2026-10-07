@@ -28,7 +28,6 @@ import (
 	"io"
 	"log"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -316,7 +315,10 @@ func handlePlayer(ctx context.Context, playerConn *nethernet.Conn, target string
 
 	// 连接目标服务器（go-raknet 兼容 Geyser/BDS 的 Secure cookie 握手）。
 	// 带超时 + 重试：go-raknet 在无 deadline 的 context 下会无限重试。
-	var netConn net.Conn
+	//
+	// 注意这里用 *gorsk.Conn 而不是 net.Conn：下面必须用 ReadPacket() 读取，
+	// 不能用 Read(buf)。详见读取循环处的说明。
+	var netConn *gorsk.Conn
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
 		netConn, lastErr = raknetDial(ctx, target)
@@ -369,20 +371,27 @@ func handlePlayer(ctx context.Context, playerConn *nethernet.Conn, target string
 	}()
 
 	// 目标服务器 → 玩家
+	//
+	// 必须用 ReadPacket() 而不是 Read(buf)：
+	// go-raknet 的 Conn.Read 会在「传入的切片小于整个 RakNet 包」时直接返回
+	// ErrBufferTooSmall（"a message sent was larger than the buffer used to
+	// receive the message into"）并结束读取。块数据（LevelChunk/SubChunk）
+	// 经分片重组后很容易超过 64KB，用固定缓冲区必然踩到，
+	// 表现为世界生成到一半突然断线。ReadPacket 返回完整包，没有大小限制。
 	go func() {
-		buf := make([]byte, 65536)
 		for {
-			n, err := netConn.Read(buf)
+			pk, err := netConn.ReadPacket()
 			if err != nil {
 				done <- fmt.Sprintf("目标服务器连接结束: %v", err)
 				return
 			}
-			log.Printf("[转发] 服务器→玩家 %d 字节: %x", n, buf[:min(n, 64)])
-			if id, ok := bedrockPacketID(buf[:n]); ok {
+			n := len(pk)
+			log.Printf("[转发] 服务器→玩家 %d 字节: %x", n, pk[:min(n, 64)])
+			if id, ok := bedrockPacketID(pk); ok {
 				log.Printf("[转发]   └ 包 ID=%d (%s)", id, bedrockPacketName(id))
 			}
-			relayLogLine("[服务器→玩家]", buf[:n])
-			out, err := serverToPlayer(&rstate, buf[:n])
+			relayLogLine("[服务器→玩家]", pk)
+			out, err := serverToPlayer(&rstate, pk)
 			if err != nil {
 				done <- fmt.Sprintf("服务器→玩家转译失败: %v", err)
 				return
@@ -704,7 +713,9 @@ var bedrockPacketNames = map[uint16]string{
 
 // raknetDial 用 sandertv/go-raknet 连接目标服务器（兼容 BDS/Geyser/cloudburst）。
 // 强制 10 秒超时，避免 go-raknet 无限重试。
-func raknetDial(ctx context.Context, target string) (net.Conn, error) {
+//
+// 返回具体类型而非 net.Conn：调用方需要用 ReadPacket()（见读取循环的说明）。
+func raknetDial(ctx context.Context, target string) (*gorsk.Conn, error) {
 	dctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	return gorsk.DialContext(dctx, target)

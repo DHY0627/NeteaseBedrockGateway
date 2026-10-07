@@ -477,12 +477,12 @@ func readVarint(b []byte) (uint32, int) {
 //	压缩开启后：                              [0xFE][0x00 = raw-deflate][deflate 数据]
 //	                                         解压后为 [varint 长度][包 ID][载荷]
 //
-// 只对小于 4KB 的帧解码：世界数据（块）动辄几十 KB，为打日志去解压它们不值得，
-// 而真正需要看清楚的恰恰是那些小的控制包（PlayStatus / Disconnect / 各类请求）。
+// 对压缩帧只解压出头部几十字节（flate 是流式的，读 32 字节就够，哪怕是 50KB 的块包
+// 也几乎不花代价），因此不限制帧大小 —— 查明「崩溃前最后一个包是什么」正需要看大包。
 //
 // 失败时返回 (0,false)，绝不 panic —— 这纯粹是诊断信息，不能影响转发。
 func bedrockPacketID(raw []byte) (uint16, bool) {
-	if len(raw) < 4 || len(raw) > 4096 {
+	if len(raw) < 4 {
 		return 0, false
 	}
 	if raw[0] != 0xFE {
@@ -492,7 +492,7 @@ func bedrockPacketID(raw []byte) (uint16, bool) {
 	if raw[1] == 0x00 {
 		zr := flate.NewReader(bytes.NewReader(raw[2:]))
 		defer zr.Close()
-		out := make([]byte, 512)
+		out := make([]byte, 32)
 		n, _ := io.ReadFull(zr, out)
 		if n < 2 {
 			return 0, false

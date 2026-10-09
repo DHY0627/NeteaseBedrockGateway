@@ -10,6 +10,8 @@
 *.json      text eol=lf
 *.ps1       text eol=crlf
 *.sh        text eol=lf
+*.patch     text eol=lf
+*.diff      text eol=lf
 
 # 二进制/证据文件不做任何文本转换
 *.exe       binary

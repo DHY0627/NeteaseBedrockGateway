@@ -9,6 +9,9 @@
 - 改动规模：1 个文件、+147 / −4 行
 - 只动 `NetEaseUpstreamHandler.java`：**只改协议行为，不碰版本相关的接线层**（`ServerRestartUtil` / initializer / RakNet 类路径一律保持上游原样，所以补丁本身与 Geyser 版本无关）
 
+> ✅ 已验证：在**全新克隆**的上游仓库上 `git apply --check` 通过、`git apply` 后 `./gradlew shadowJar` 构建成功（产物约 3.1 MB）；
+> 该产物在 **Geyser 2.10.1-b1174 + Velocity 3.5.1** 上由网易原版客户端**成功进服**（后端日志可见 `logged in with entity id ... / joined the game`）。
+
 ---
 
 ## 为什么需要它

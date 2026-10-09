@@ -1,0 +1,185 @@
+diff --git a/src/main/java/nc/geyserext/netease/handler/NetEaseUpstreamHandler.java b/src/main/java/nc/geyserext/netease/handler/NetEaseUpstreamHandler.java
+index 840f2a9..457227c 100644
+--- a/src/main/java/nc/geyserext/netease/handler/NetEaseUpstreamHandler.java
++++ b/src/main/java/nc/geyserext/netease/handler/NetEaseUpstreamHandler.java
+@@ -41,8 +41,37 @@ import java.util.*;
+ 
+ public class NetEaseUpstreamHandler extends UpstreamHandlerBase {
+ 
+-    private NeteaseSession neteaseSession;
++    /**
++     * 网易局域网客户端的客户端数据里 ServerAddress 常为 ":0" 或含 '|' 的非法值
++     * （形如 "host|port"）。GeyserSession.joinAddress() 会原样取用，
++     * forward-hostname=true 时 java 握手就带着这个非法 hostname 发给 Velocity，
++     * Velocity 在登录阶段直接静默掐断连接（前线处理器不打日志）。
++     */
++    private static final String FORCED_SERVER_ADDRESS =
++        System.getProperty("GeyserNetease.ServerAddress", "example.com:19132");
++
++    private static void patchServerAddress(BedrockClientData bcd) {
++        if (bcd == null) return;
++        try {
++            String cur = bcd.getServerAddress();
++            NeteaseExtension.LOG.info("[GeyserNetease] 客户端 ServerAddress=" + (cur == null ? "null" : "\"" + cur + "\""));
++            if (cur != null && !cur.isEmpty() && !cur.startsWith(":") && !cur.contains("|")) return;
++            boolean ok = false;
++            try {
++                java.lang.reflect.Method m = BedrockClientData.class.getDeclaredMethod("setServerAddress", String.class);
++                m.setAccessible(true); m.invoke(bcd, FORCED_SERVER_ADDRESS); ok = true;
++            } catch (Throwable ignored) {}
++            if (!ok) {
++                java.lang.reflect.Field fl = BedrockClientData.class.getDeclaredField("serverAddress");
++                fl.setAccessible(true); fl.set(bcd, FORCED_SERVER_ADDRESS);
++            }
++            NeteaseExtension.LOG.info("[GeyserNetease] 已修正 ServerAddress -> \"" + FORCED_SERVER_ADDRESS + "\"（java 握手 hostname 依赖它）");
++        } catch (Throwable e) {
++            NeteaseExtension.LOG.error("[GeyserNetease] 修正 ServerAddress 失败: " + e);
++        }
++    }
+ 
++    private NeteaseSession neteaseSession;
+     public NetEaseUpstreamHandler(GeyserImpl geyser, GeyserSession session) {
+         super(geyser, session);
+     }
+@@ -111,10 +140,10 @@ public class NetEaseUpstreamHandler extends UpstreamHandlerBase {
+                 }
+                 if (session.getClientData() == null)
+                     session.setClientData(buildFakeClientData(name));
++                patchServerAddress(session.getClientData());
+ 
+-                startEncryptionHandshake(session, result.identityClaims().parsedIdentityPublicKey());
+-                if (session.isClosed()) { session.forciblyCloseUpstream(); return PacketSignal.HANDLED; }
+-                neteaseSession.setLoginDeferred(true);
++                neteaseSession.setLoginDeferred(false);
++                NeteaseExtension.LOG.info("[GeyserNetease] 已跳过 ServerToClientHandshake（网易客户端收到该包会静默忽略并超时）");
+             }
+         } catch (Exception e) { session.disconnect("disconnectionScreen.internalError.cantConnect"); NeteaseExtension.LOG.error("NetEase auth failed", e); return PacketSignal.HANDLED; }
+ 
+@@ -158,6 +187,20 @@ public class NetEaseUpstreamHandler extends UpstreamHandlerBase {
+         this.geyser.eventBus().fireEventElseKick(this.resourcePackLoadEvent, session);
+         if (session.isClosed()) return PacketSignal.HANDLED;
+         session.integratedPackActive(resourcePackLoadEvent.isIntegratedPackActive());
++        PlayStatusPacket ps = new PlayStatusPacket();
++        ps.setStatus(PlayStatusPacket.Status.LOGIN_SUCCESS);
++        session.sendUpstreamPacket(ps);
++
++        ResourcePacksInfoPacket rpi = new ResourcePacksInfoPacket();
++        rpi.getResourcePackInfos().addAll(this.resourcePackLoadEvent.infoPacketEntries());
++        rpi.setVibrantVisualsForceDisabled(!session.isAllowVibrantVisuals());
++        rpi.setForcedToAccept(geyser.config().gameplay().forceResourcePacks() || resourcePackLoadEvent.isIntegratedPackActive());
++        rpi.setWorldTemplateId(java.util.UUID.randomUUID());
++        rpi.setWorldTemplateVersion("*");
++        session.sendUpstreamPacket(rpi);
++        NeteaseExtension.LOG.info("[GeyserNetease] 已下发 PlayStatus(LOGIN_SUCCESS) + ResourcePacksInfo");
++
++        if (SNIFF_ENABLED) startJavaSniffer();
+         GeyserLocale.loadGeyserLocale(session.locale());
+         return PacketSignal.HANDLED;
+     }
+@@ -278,6 +321,106 @@ public class NetEaseUpstreamHandler extends UpstreamHandlerBase {
+ 
+     public NeteaseSession neteaseSession() { return neteaseSession; }
+ 
++    // ==================== Java 侧嗅探（诊断用，-DGeyserNetease.Sniff=true 开启）====================
++    private static final boolean SNIFF_ENABLED =
++        Boolean.parseBoolean(System.getProperty("GeyserNetease.Sniff", "false"));
++    private static volatile java.io.PrintWriter SNIFF_OUT;
++    private static final java.util.concurrent.atomic.AtomicInteger SNIFF_TRIES =
++        new java.util.concurrent.atomic.AtomicInteger();
++    private static final java.util.concurrent.atomic.AtomicInteger SNIFF_CONSOLE =
++        new java.util.concurrent.atomic.AtomicInteger();
++
++    /** 反射取值，成员不存在/抛错都只返回标记，绝不影响主流程。 */
++    private static String refl(Object target, String method) {
++        try { return String.valueOf(target.getClass().getMethod(method).invoke(target)); }
++        catch (Throwable e) { return "<" + e.getClass().getSimpleName() + ">"; }
++    }
++
++    private void startJavaSniffer() {
++        if (!SNIFF_ENABLED) return;
++        NeteaseExtension.LOG.info("[GeyserNetease][JSniff] 诊断: forwardHostname=" + refl(geyser.config().java(), "forwardHostname")
++            + " joinAddress=" + refl(session, "joinAddress")
++            + " remoteServer=" + refl(session, "remoteServer")
++            + " clientData.ServerAddress=" + refl(session.getClientData(), "getServerAddress")
++            + " 强制地址=" + FORCED_SERVER_ADDRESS);
++        session.scheduleInEventLoop(this::attachJavaSniffer, 20, java.util.concurrent.TimeUnit.MILLISECONDS);
++    }
++
++    private void attachJavaSniffer() {
++        if (!SNIFF_ENABLED) return;
++        try {
++            if (session.getDownstream() == null || session.getDownstream().getSession() == null) {
++                if (SNIFF_TRIES.incrementAndGet() < 300) {
++                    session.scheduleInEventLoop(this::attachJavaSniffer, 20, java.util.concurrent.TimeUnit.MILLISECONDS);
++                } else {
++                    NeteaseExtension.LOG.info("[GeyserNetease][JSniff] downstream 始终未创建，放弃");
++                }
++                return;
++            }
++            try {
++                java.io.File ff = new java.io.File("geyser-netease-java.log");
++                SNIFF_OUT = new java.io.PrintWriter(new java.io.FileWriter(ff, true), true);
++                sniff("===== 嗅探启动 path=" + ff.getAbsolutePath(), null);
++            } catch (Throwable ignored) {}
++
++            var javaSession = session.getDownstream().getSession();
++            sniff("downstream=" + javaSession.getClass().getName()
++                + " forwardHostname=" + refl(geyser.config().java(), "forwardHostname")
++                + " joinAddress=" + refl(session, "joinAddress")
++                + " clientData.ServerAddress=" + refl(session.getClientData(), "getServerAddress"), null);
++
++            javaSession.addListener(new org.geysermc.mcprotocollib.network.event.session.SessionAdapter() {
++                @Override
++                public void connected(org.geysermc.mcprotocollib.network.event.session.ConnectedEvent event) {
++                    sniff("== Java 通道建立 ==", null);
++                }
++
++                @Override
++                public void packetSending(org.geysermc.mcprotocollib.network.event.session.PacketSendingEvent event) {
++                    Object p = event.getPacket();
++                    String n = p.getClass().getSimpleName();
++                    boolean key = n.contains("Intention") || n.contains("Hello") || n.contains("LoginSuccess")
++                        || n.contains("Disconnect") || n.contains("Finished") || n.contains("Compression")
++                        || n.contains("Acknowledged") || n.contains("CustomQuery");
++                    sniff("出-> " + n + (key ? " " + p : ""), null);
++                }
++
++                @Override
++                public void packetReceived(org.geysermc.mcprotocollib.network.Session s,
++                                           org.geysermc.mcprotocollib.network.packet.Packet p) {
++                    sniff("入<- " + p.getClass().getSimpleName() + " " + p, null);
++                }
++
++                @Override
++                public void packetError(org.geysermc.mcprotocollib.network.event.session.PacketErrorEvent event) {
++                    sniff("!! 包错误: " + event.getCause() + " packet=" + event.getPacketClass(), null);
++                }
++
++                @Override
++                public void disconnecting(org.geysermc.mcprotocollib.network.event.session.DisconnectingEvent event) {
++                    sniff("== 正在断开: reason=" + event.getReason() + " cause=" + event.getCause(), null);
++                }
++
++                @Override
++                public void disconnected(org.geysermc.mcprotocollib.network.event.session.DisconnectedEvent event) {
++                    sniff("== 已断开: reason=" + event.getReason() + " cause=" + event.getCause(), null);
++                }
++            });
++            sniff("已挂载 Java 会话监听器（监听器数=" + javaSession.getListeners().size() + "）", null);
++        } catch (Throwable e) {
++            NeteaseExtension.LOG.error("[GeyserNetease][JSniff] 嗅探器挂载失败", e);
++        }
++    }
++
++    private static void sniff(String tag, byte[] raw) {
++        String line = "[" + java.time.LocalTime.now().withNano(0) + "] " + tag;
++        java.io.PrintWriter out = SNIFF_OUT;
++        if (out != null) out.println(line);
++        if (SNIFF_CONSOLE.incrementAndGet() <= 150) {
++            NeteaseExtension.LOG.info("[GeyserNetease][JSniff] " + line);
++        }
++    }
++
+     private static BedrockClientData buildFakeClientData(String name) {
+         return GeyserImpl.GSON.fromJson(
+             "{\"GameVersion\":\"1.21.40\",\"LanguageCode\":\"en_us\",\"DeviceOS\":1," +

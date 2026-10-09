@@ -212,6 +212,9 @@ NeteaseBedrockGateway.exe -u "房主4399账号" -p "密码" -room-name "我的�
   | 大小 / SHA256 | 3,118,355 字节 / `3388f14b508d6c5e0dea5021ceb27647dded65b7b48a1531c78a3a51216dbdf9` |
   | 适配 Geyser | 2.11.3（扩展版本 1.1.0） |
 
+- **如果你的 Geyser 不是 2.11.x**（例如 2.9.x / 2.10.x）：上面那个 jar 用不了 —— fork 的接线层依赖 2.11 才有的 `network.bedrock.raknet.*` / `BedrockPingHandler` / `RaknetServer`，这套源码在这些版本上编译不过。请改用 [`patches/`](patches/README.md) 里的兼容补丁：把它打到上游 [LoHJG/GeyserNetease](https://github.com/LoHJG/GeyserNetease) 上再构建，协议行为与 fork 一致（跳过加密握手 + 修正 `ServerAddress`）。
+  实测组合：**Geyser 2.10.1-b1174 + Velocity 3.5.1 + 本补丁** → 玩家正常进服。
+
 - 安装位置（按平台，是 Geyser 的 **`extensions/` 子目录**，不是 `plugins/` 根目录）：
   - Standalone：`extensions/GeyserNeteaseExtension.jar`
   - Velocity：`plugins/Geyser-Velocity/extensions/GeyserNeteaseExtension.jar`
@@ -377,6 +380,7 @@ NeteaseBedrockGateway/
 ├── docs/
 │   ├── troubleshooting.md    两个「静默失败」的完整排查记录 + 排查手法
 │   └── captures/             抓包与 hex 证据（含账号 token，**默认不入库**）
+├── patches/                  Geyser 2.9 / 2.10 兼容补丁（README + .patch，见「目标服务器要求」）
 ├── images/                   开发者名单用的图片
 ├── third_party/              三个外部依赖（git submodule：solver / go-raknet / g79client）
 ├── .gitmodules               上面三个 submodule 的地址与分支
@@ -434,6 +438,7 @@ go run ./cmd/diag/javaprobe -addr example.com:25565 -mode login -name TestPlayer
 | 同上症状，但已确认 `-level-id` 非空 | 启动日志里 `转发目标` 与 `上报房主地址` 两行 | `-server-address` / `-target` 填错（**仅排查方向，未实测**） |
 | 客户端连上但**零数据**、90 秒超时、`relay.log` 不生成 | 启动日志（标准输出）里 `收到玩家连接` 之后 | 依赖 `nemc-tan-lobby-solver` 没打补丁（见 [依赖与许可](#依赖与许可dependencies--licenses) 的 fork 说明） |
 | 客户端显示 **`数据流终止`**，Geyser 日志同款，Velocity 无日志 | 扩展嗅探日志（`-DGeyserNetease.Sniff=true`） | Geyser 的 java 握手 hostname 为空 → 设置 `-DGeyserNetease.ServerAddress` |
+| 客户端进房后**一直卡住不进服**：Geyser 日志里发完 `ServerToClientHandshake` 后再无玩家数据，约 30 秒超时 | 你装的扩展是不是**上游原版**源码编的 | 上游代码**无条件**做加密握手，而网易客户端对该包静默忽略 → 打 [`patches/`](patches/README.md) 补丁，或改用带 `SKIP_ENCRYPTION` 的 fork jar |
 | Geyser 报「服务器已过期/版本不支持」 | Geyser 日志 | 目标服缺 GeyserNetease 扩展，或扩展版本过旧 |
 | 房间突然消失 | 网关日志有没有「房间存活检查失败」 | 房间被网易回收 → 新版会自动重建 |
 | 启动就报 4399 登录失败 | —— | 账号密码错误，或触发登录限频（等 1~3 分钟） |

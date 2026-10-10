@@ -116,10 +116,11 @@ func main() {
 		debugLong          = flag.Bool("debug", false, "同 -d（写成 --debug 亦可）")
 
 		// Web 控制台（不带参数启动即进入控制台模式）
-		webPort    = flag.Int("p", 8765, "Web 控制台端口（1-65535，默认 8765）")
-		installSvc = flag.Bool("install", false, "注册为 systemd 服务（仅 Linux，需 root）")
-		runConfig  = flag.String("run", "", "内部模式：按 JSON 配置运行单个开房实例（由 Web 控制台拉起）")
-		webRoot    = flag.String("web-root", "", "Web 静态文件目录（默认自动查找 exe 旁的 web/ 或 ./web）")
+		webPort      = flag.Int("p", 8765, "Web 控制台端口（1-65535，默认 8765）")
+		installSvc   = flag.Bool("install", false, "注册为 systemd 服务（仅 Linux，需 root）")
+		uninstallSvc = flag.Bool("uninstall", false, "卸载已注册的 systemd 服务（仅 Linux，需 root）")
+		runConfig    = flag.String("run", "", "内部模式：按 JSON 配置运行单个开房实例（由 Web 控制台拉起）")
+		webRoot      = flag.String("web-root", "", "Web 静态文件目录（默认自动查找 exe 旁的 web/ 或 ./web）")
 	)
 	flag.Parse()
 	netherMsgLimit = *netherMsgLimitFlag
@@ -161,9 +162,16 @@ func main() {
 		}
 		debugLog = rc.Debug
 	}
-	// 2) -install：注册 systemd 服务
+	// 2) -install / -uninstall：注册或卸载 systemd 服务
+	if *installSvc && *uninstallSvc {
+		fatalf("-install 与 -uninstall 不能同时使用")
+	}
 	if *installSvc {
 		installSystemd(*webPort)
+		return
+	}
+	if *uninstallSvc {
+		uninstallSystemd()
 		return
 	}
 	// 3) 没给 -target（也没走 -run）→ 进入 Web 控制台模式
@@ -173,7 +181,7 @@ func main() {
 	}
 
 	if *username == "" || *password == "" || *target == "" {
-		fmt.Fprintln(os.Stderr, "用法1（Web 控制台）: NeteaseBedrockGateway [-p 端口] [-install] [-web-root 目录]")
+		fmt.Fprintln(os.Stderr, "用法1（Web 控制台）: NeteaseBedrockGateway [-p 端口] [-install|-uninstall] [-web-root 目录]")
 		fmt.Fprintln(os.Stderr, "用法2（单房间 CLI）: NeteaseBedrockGateway -u 用户名 -pass 密码 -target 服务器IP/域名:端口 [-server-address 房主地址] [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔] [-d|--debug]")
 		if *username != "" && *password != "" && *target == "" {
 			fmt.Fprintln(os.Stderr, "错误: -target 必填（玩家流量转发目标，例如 -target 服务器IP/域名:49780）")
@@ -2696,6 +2704,39 @@ WantedBy=multi-user.target
 		fatalf("写入 %s 失败: %v", unitPath, err)
 	}
 	fmt.Printf("已写入 %s\n执行: systemctl daemon-reload && systemctl enable --now netease-gateway\n", unitPath)
+}
+
+/* ============================ -uninstall：卸载 systemd 服务 ============================ */
+
+func uninstallSystemd() {
+	if runtime.GOOS != "linux" {
+		fatalf("-uninstall 只在 Linux 下可用（当前系统: %s）", runtime.GOOS)
+	}
+	const unitPath = "/etc/systemd/system/netease-gateway.service"
+	if os.Geteuid() != 0 {
+		fmt.Printf("需要 root 权限。请以 root 执行下面几条命令：\n\n")
+		fmt.Printf("  sudo systemctl disable --now netease-gateway\n")
+		fmt.Printf("  sudo rm -f %s\n", unitPath)
+		fmt.Printf("  sudo systemctl daemon-reload && sudo systemctl reset-failed netease-gateway\n")
+		return
+	}
+	run := func(args ...string) {
+		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+		line := strings.TrimSpace(string(out))
+		if err != nil {
+			fmt.Printf("  %s → %v %s\n", strings.Join(args, " "), err, line)
+			return
+		}
+		fmt.Printf("  %s → ok %s\n", strings.Join(args, " "), line)
+	}
+	run("systemctl", "disable", "--now", "netease-gateway")
+	if err := os.Remove(unitPath); err != nil && !os.IsNotExist(err) {
+		fatalf("删除 %s 失败: %v", unitPath, err)
+	}
+	fmt.Printf("已删除 %s\n", unitPath)
+	run("systemctl", "daemon-reload")
+	run("systemctl", "reset-failed", "netease-gateway")
+	fmt.Println("卸载完成。可执行文件与 nbg-console.json / instances/ 未删除，需要的话请自行清理。")
 }
 
 /* ============================ 排序辅助（稳定输出，便于排查） ============================ */

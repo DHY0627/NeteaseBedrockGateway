@@ -29,6 +29,7 @@
   - [2. 玩家进服](#2-玩家进服)
   - [3. 目标服务器要求](#3-目标服务器要求)
   - [4. 常驻运行](#4-常驻运行)
+- [Web 控制台](#web-控制台)
 - [命令行参数](#命令行参数)
 - [房间状态文件](#房间状态文件)
 - [目录结构](#目录结构)
@@ -284,12 +285,56 @@ cat /opt/netease-gateway/room.txt         # 看当前房间号
 
 ---
 
+## Web 控制台
+
+网关自带 Web 控制台，**前端已经 `go:embed` 打进二进制**，所以部署只需要一个可执行文件。
+
+```bash
+NeteaseBedrockGateway                 # 不带参数启动 = 进控制台，默认 http://127.0.0.1:8765/
+NeteaseBedrockGateway -p 8765         # 指定控制台端口（1-65535）
+NeteaseBedrockGateway -install        # 注册为 systemd 服务（仅 Linux，需 root）
+NeteaseBedrockGateway -uninstall      # 卸载该 systemd 服务（仅 Linux，需 root）
+```
+
+默认账号密码 **`user` / `password`**，**第一次登录后请立刻在「全局设置」里改掉**。
+登录态是浏览器会话 Cookie（不带 Max-Age），**关闭标签页即自动退出登录**。
+
+### 能做什么
+
+| 区块 | 说明 |
+|---|---|
+| 账号管理 | 维护多个 4399 账号；列表只显示账号名与掩码密码（如 `am••••`），**明文与密文都不会下发给前端** |
+| 网关实例 | 每个实例一个独立子进程：启动 / 停止、状态、在线人数、房间号、转发目标；「打开网关日志」实时查看该实例输出（SSE 推送） |
+| 命令设置 | 每个实例可挂多条命令，在 网关启动 / 网关停止 / 登录成功 / 房间创建 / 房间号变化 / 房间重建 / 玩家加入 / 玩家离开 / 存活检查失败 时执行 |
+| 全局设置 | 控制台用户名 / 密码（密码留空 = 不更改）、是否允许公网访问 |
+
+命令占位符（执行时替换成实际值）：
+`{&roomid}` `{&timestamp}` `{&datetime}` `{&account}` `{&instancename}` `{&server}` `{&capacity}` `{&players}` `{&event}`
+
+### 安全说明
+
+- **控制台密码**：`PBKDF2-HMAC-SHA256(salt, 200000 次)` 派生，只存 salt 与校验值，**明文不落盘**；校验用常量时间比较。
+- **4399 账号密码**：`AES-256-GCM` 加密后存为 `passwordEnc`。加密密钥由控制台密码派生，**只在登录后驻留内存，退出登录立即清零** —— 所以开房必须先登录控制台。更换控制台密码时，会用新密钥把全部账号密码重新加密。
+- 老版本配置里明文保存的账号密码，会在**首次登录时自动加密迁移**。
+- 登录失败 5 次锁定 30 秒；会话上限 8 小时；响应带 `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: no-referrer`。
+- 配置文件 `nbg-console.json` 以 `0600` 写入（内含加密凭据，已在 `.gitignore` 里）；`instances/` 是各实例的运行时目录。
+- ⚠️ **控制台本身不带 HTTPS**：勾选「允许公网访问」后，登录密码与会话 Cookie 会以明文经过网络。公网部署请在前面挂一层 HTTPS 反向代理，或只监听 `127.0.0.1`。
+- 已知限制：Go 的 `string` 不可变，解密出的密码会以 string 形式短暂存在于内存，无法像 `[]byte` 那样擦除。
+
+### 与单房间 CLI 模式的关系
+
+不开控制台、像以前那样用命令行直接开一个房间仍然支持（见下一节），两条路径共用同一套开房逻辑。
+控制台的每个实例，本质就是它替你拉起 `-run <实例配置.json>` 子进程（密码走文件、不进命令行，子进程读完即删该文件）。
+
+---
+
 ## 命令行参数
 
 | 参数                | 默认值                               | 说明                                       |
 | ----------------- | --------------------------------- | ---------------------------------------- |
-| `-u`              | —                                 | 4399 用户名（**房主账号**，必填）                    |
-| `-p`              | —                                 | 4399 密码（必填）                              |
+| `-u`              | —                                 | 4399 用户名（**单房间 CLI 模式**用；只跑 Web 控制台不需要） |
+| `-pass`           | —                                 | 4399 密码（单房间 CLI 模式用）。**注意：原来叫 `-p`**，因为 `-p` 现在是控制台端口 |
+| `-p`              | `8765`                            | **Web 控制台端口**（1-65535）                     |
 | `-room-name`      | `NeteaseBedrockGateway Host Room` | 房间名称（其实没用）                               |
 | `-capacity`       | `8`                               | 房间容量                                     |
 | `-room-password`  | 空                                 | 房间密码（留空 = 无密码）                           |
@@ -302,6 +347,12 @@ cat /opt/netease-gateway/room.txt         # 看当前房间号
 | `-version-string` | `1.21.120.0`                      | 房间游戏版本字符串（玩家进房时校验）                       |
 | `-room-file`      | `room.json`                       | 房间信息落盘文件；同时写同名 `.txt`（只存房间号）。空字符串 = 不落盘  |
 | `-keepalive`      | `25s`                             | 房间存活检查间隔；`0` = 关闭。连续 3 次查不到即判定房间被回收并自动重建 |
+| `-install`        | —                                 | 注册为 systemd 服务（仅 Linux，需 root；非 root 时打印现成命令） |
+| `-uninstall`      | —                                 | 卸载上面注册的 systemd 服务（仅 Linux，需 root）          |
+| `-web-root`       | —                                 | 用磁盘目录覆盖内嵌前端（改前端不用重编译，调试用）              |
+| `-run`            | —                                 | 内部模式：按 JSON 配置运行单个实例（由控制台拉起，一般不用手写）      |
+| `-d` / `--debug`  | `false`                           | 输出详细日志：逐帧 hex、pion(ICE/DTLS/SCTP)、NetherNet 信令细节 |
+| `-nether-msg-limit` | `0`                             | 诊断开关：转发给玩家的单条 NetherNet 消息上限（字节，0=不限制）   |
 
 > ⚠️ **`-level-id` 不要留空。**（这是本项目最容易踩的坑，已实测定位）
 >
@@ -374,6 +425,7 @@ NeteaseBedrockGateway/
 │   ├── auth/                 4399 OAuth 登录 + x19 认证
 │   ├── room/                 开房凭据生成（TanLobbyCreate）
 │   └── wplauncher/           4399X19Login 登录库（复制自 DHY0627/4399X19Login，MIT）
+├── cmd/gateway/webui/        Web 控制台前端（login/index + assets，被 go:embed 打进二进制）
 ├── tools/frida/              逆向网易客户端用的 frida 脚本
 ├── scripts/                  build.ps1 / build.sh 本地交叉编译脚本
 ├── .github/workflows/        ci.yml（push 校验）+ release.yml（打 tag 自动发版）

@@ -1182,6 +1182,9 @@ func serveConsole(port int, webRoot string) {
 	if c.state.Settings.Username == "" {
 		c.state.Settings.Username = "user"
 		c.setPassword("password") // 默认账号密码 user / password
+		// 默认监听所有网卡：否则只有本机能打开，局域网里的手机/电脑都访问不了。
+		// 只想本机访问，就在控制台「全局设置」里取消勾选。
+		c.state.Settings.PublicAccess = true
 	}
 	if err := c.save(); err != nil {
 		log.Printf("[控制台] 保存 %s 失败: %v", c.file, err)
@@ -1190,14 +1193,21 @@ func serveConsole(port int, webRoot string) {
 	mux := http.NewServeMux()
 	c.routes(mux)
 
+	// 监听策略：只本机 → 127.0.0.1；放开 → 先用双栈 ":port"（Windows 上 [::] 已覆盖 IPv4，
+	// 再绑 0.0.0.0 会冲突），失败再退到 0.0.0.0:port。
 	binds := []string{fmt.Sprintf("127.0.0.1:%d", port)}
 	if c.state.Settings.PublicAccess {
-		binds = []string{fmt.Sprintf("0.0.0.0:%d", port), fmt.Sprintf("[::]:%d", port)}
+		binds = []string{fmt.Sprintf(":%d", port), fmt.Sprintf("0.0.0.0:%d", port)}
 	}
 
-	log.Printf("[控制台] Web 控制台已启动：%s（%s）", strings.Join(binds, " , "),
-		cond(c.state.Settings.PublicAccess, "公网可访问", "仅本机"))
-	log.Printf("[控制台] 浏览 http://127.0.0.1:%d/ 登录（默认 user / password）", port)
+	log.Printf("[控制台] Web 控制台启动中（端口 %d，%s）...", port,
+		cond(c.state.Settings.PublicAccess, "监听所有网卡", "仅本机"))
+	log.Printf("[控制台] 本机访问：http://127.0.0.1:%d/（默认 user / password）", port)
+	if c.state.Settings.PublicAccess {
+		for _, u := range lanURLs(port) {
+			log.Printf("[控制台] 局域网/其它设备访问：%s", u)
+		}
+	}
 	if c.webRoot != "" {
 		log.Printf("[控制台] 前端：磁盘目录 %s（-web-root 调试模式）", c.webRoot)
 	} else {
@@ -1206,21 +1216,28 @@ func serveConsole(port int, webRoot string) {
 
 	// 公网访问时同时监听 IPv4/IPv6 通配地址，任一失败都不致命。
 	var wg sync.WaitGroup
-	errCh := make(chan error, len(binds))
+	errCh := make(chan error, len(binds)+1)
+	started := 0
+	var lastErr error
 	for _, b := range binds {
 		ln, err := net.Listen("tcp", b)
 		if err != nil {
-			errCh <- fmt.Errorf("监听 %s 失败: %w", b, err)
+			lastErr = err // 某个地址不可用不算致命，只要有一个绑上就行
 			continue
 		}
+		started++
+		log.Printf("[控制台] 已监听 %s", ln.Addr())
 		wg.Add(1)
 		srv := &http.Server{Handler: withSecurityHeaders(mux), ReadHeaderTimeout: 10 * time.Second}
-		go func() {
+		go func(l net.Listener) {
 			defer wg.Done()
-			if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := srv.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errCh <- err
 			}
-		}()
+		}(ln)
+	}
+	if started == 0 {
+		fatalf("监听 %d 端口失败: %v", port, lastErr)
 	}
 	select {
 	case err := <-errCh:
@@ -1484,6 +1501,28 @@ func (c *console) routes(mux *http.ServeMux) {
 
 	// 静态页面（未登录时页面自己会跳登录页）
 	mux.HandleFunc("/", c.handleStatic)
+}
+
+// lanURLs 列出本机可用的局域网访问地址（启动时提示用）。
+func lanURLs(port int) []string {
+	var out []string
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return out
+	}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok || ipnet.IP.IsLoopback() || ipnet.IP.IsLinkLocalUnicast() {
+			continue
+		}
+		ip := ipnet.IP
+		if v4 := ip.To4(); v4 != nil {
+			out = append(out, fmt.Sprintf("http://%s:%d/", v4.String(), port))
+		} else if ip.IsPrivate() {
+			out = append(out, fmt.Sprintf("http://[%s]:%d/", ip.String(), port))
+		}
+	}
+	return out
 }
 
 // withSecurityHeaders 给所有响应加基础安全头。

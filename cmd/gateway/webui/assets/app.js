@@ -172,7 +172,7 @@ function renderSettings() {
   // 端口跟随实际访问地址，避免换端口后显示错的
   const webPort = location.port || (location.protocol === 'https:' ? '443' : '80');
   $('#topMeta').textContent = state.settings.publicAccess
-    ? `Web 控制台 0.0.0.0:${webPort} / [::]:${webPort}（公网可访问）`
+    ? `Web 控制台 0.0.0.0:${webPort} / [::]:${webPort}（局域网 / 公网可访问）`
     : `Web 控制台 127.0.0.1:${webPort}（仅本机）`;
 }
 function renderPlaceholders() {

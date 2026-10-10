@@ -157,15 +157,31 @@ jobs:
 
             ## 运行
 
+            **单文件自包含**：Web 控制台的前端已经打包进二进制，下载后直接运行即可，
+            不需要额外前端文件，也不需要 Go 环境。
+
             ```bash
-            # Linux / macOS
+            # Linux / macOS —— 不带参数启动就进 Web 控制台
             chmod +x NeteaseBedrockGateway-linux-amd64
-            ./NeteaseBedrockGateway-linux-amd64 -u "4399账号" -p "密码" -target example.com:19132
+            ./NeteaseBedrockGateway-linux-amd64                  # 打开 http://127.0.0.1:8765/  默认 user / password
+            ./NeteaseBedrockGateway-linux-amd64 -port 8765       # 指定控制台端口（1-65535）
+            sudo ./NeteaseBedrockGateway-linux-amd64 -install    # 注册为 systemd 服务（开机自启）
+            sudo ./NeteaseBedrockGateway-linux-amd64 -uninstall  # 卸载上面注册的服务
             ```
 
             ```powershell
             # Windows
-            .\NeteaseBedrockGateway-windows-amd64.exe -u "4399账号" -p "密码" -target example.com:19132
+            .\NeteaseBedrockGateway-windows-amd64.exe               # 打开 http://127.0.0.1:8765/
+            ```
+
+            > 首次登录后请在「全局设置」里改掉默认密码。4399 账号在控制台「账号管理」里维护，
+            > 密码以 AES-256-GCM 加密存储、登录后才解密，因此**开房必须先登录控制台**。
+            > 控制台支持多实例（每个实例一个房间）、事件触发的自定义命令、实时日志。
+
+            仍然支持像以前那样直接用命令行开一个房间（单房间 CLI 模式）：
+
+            ```bash
+            ./NeteaseBedrockGateway-linux-amd64 -u "4399账号" -p "密码" -target example.com:19132
             ```
 
             > `-target` 必须指向 **Geyser 的 RakNet（UDP）端口**（Geyser 默认 `19132`）。目标服还需要安装配套扩展

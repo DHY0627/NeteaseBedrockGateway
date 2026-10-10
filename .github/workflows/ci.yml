@@ -45,6 +45,20 @@ jobs:
           CGO_ENABLED: '0'
         run: go build ./...
 
+      - name: 冒烟检查（参数齐全 + 内嵌前端就位）
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          go build -o /tmp/nbg ./cmd/gateway
+          /tmp/nbg -h 2>&1 | tee /tmp/help.txt
+          for flag in -- '-port' '-p' '-install' '-uninstall' '-web-root' '-run' '-d' '--debug'; do
+            grep -q -- "$flag" /tmp/help.txt || { echo "::error::缺少参数 $flag"; exit 1; }
+          done
+          for f in login.html index.html assets/app.js assets/style.css; do
+            [ -f "cmd/gateway/webui/$f" ] || { echo "::error::内嵌前端缺文件: $f"; exit 1; }
+          done
+          echo "参数与内嵌前端检查通过"
+
       - name: 构建全部发布目标（不发布，只验证能过）
         env:
           CGO_ENABLED: '0'

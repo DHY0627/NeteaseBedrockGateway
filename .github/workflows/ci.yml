@@ -51,7 +51,8 @@ jobs:
         run: |
           go build -o /tmp/nbg ./cmd/gateway
           /tmp/nbg -h 2>&1 | tee /tmp/help.txt
-          for flag in -- '-port' '-p' '-install' '-uninstall' '-web-root' '-run' '-d' '--debug'; do
+          # 注意：Go 的 flag 用法里长参数打印成单横线（-debug，而不是 --debug）
+          for flag in -- '-port' '-p' '-install' '-uninstall' '-web-root' '-run' '-d' '-debug'; do
             grep -q -- "$flag" /tmp/help.txt || { echo "::error::缺少参数 $flag"; exit 1; }
           done
           for f in login.html index.html assets/app.js assets/style.css; do

@@ -49,6 +49,10 @@ import (
 // 由 -nether-msg-limit 设置，供 handlePlayer 使用（它不直接拿得到 flag）。
 var netherMsgLimit = 0
 
+// debugLog 由 -d / --debug 开启：输出逐帧 hex、pion(ICE/DTLS/SCTP) 与 NetherNet 信令细节。
+// 关闭时只保留生命周期与关键事件日志（登录/建房间/玩家进出/保活）。
+var debugLog = false
+
 type session struct {
 	raknetConn *raknet.Conn
 	enc        *packet.Encoder
@@ -88,9 +92,12 @@ func main() {
 		// 超过它的帧一律不转发：实测 Geyser 会发来 30 万字节级的块数据帧，
 		// 直接转发会让客户端在若干秒后闪退。设为 0 可关闭该保护。
 		netherMsgLimitFlag = flag.Int("nether-msg-limit", 0, "诊断开关：转发给玩家的单条 NetherNet 消息上限（字节，0=不限制）。设成 262144 会把超过客户端 max-message-size 的帧【丢弃】（会丢区块，仅用于排查）")
+		debugShort         = flag.Bool("d", false, "输出详细日志：逐帧 hex、pion(ICE/DTLS/SCTP)、NetherNet 信令细节")
+		debugLong          = flag.Bool("debug", false, "同 -d（写成 --debug 亦可）")
 	)
 	flag.Parse()
 	netherMsgLimit = *netherMsgLimitFlag
+	debugLog = *debugShort || *debugLong
 	if *username == "" || *password == "" || *target == "" {
 		fmt.Fprintln(os.Stderr, "用法: NeteaseBedrockGateway -u 用户名 -p 密码 -target 服务器IP/域名:端口 [-server-address 房主地址] [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔]")
 		if *username != "" && *password != "" && *target == "" {
@@ -128,7 +135,7 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 	// 生命周期交给 gateway：登录 → 开房 → 监听服务；房间失效（中转断开/被回收）自动重建。
-	log.Printf("[房主] 转发目标: %s，上报房主地址: %s，房间信息落盘: %s，存活检查间隔: %s", *target, *serverAddr, *roomFile, *keepalive)
+	log.Printf("[房主] 转发目标: %s，上报房主地址: %s，房间信息落盘: %s，存活检查间隔: %s，详细日志: %v", *target, *serverAddr, *roomFile, *keepalive, debugLog)
 	g := &gateway{cfg: gatewayConfig{
 		username:      *username,
 		password:      *password,
@@ -368,7 +375,9 @@ func handlePlayer(ctx context.Context, playerConn *nethernet.Conn, target string
 	// 玩家 → 目标服务器
 	go func() {
 		for data := range pending {
-			log.Printf("[转发] 玩家→服务器 %d 字节: %x", len(data), data[:min(len(data), 64)])
+			if debugLog {
+				log.Printf("[转发] 玩家→服务器 %d 字节: %x", len(data), data[:min(len(data), 64)])
+			}
 			relayLogLine("[玩家→服务器]", data)
 			out := playerToServer(&rstate, data)
 			if _, err := netConn.Write(out); err != nil {
@@ -419,9 +428,11 @@ func handlePlayer(ctx context.Context, playerConn *nethernet.Conn, target string
 				}
 				continue
 			}
-			log.Printf("[转发] 服务器→玩家 %d 字节: %x", n, pk[:min(n, 64)])
-			if id, ok := bedrockPacketID(pk); ok {
-				log.Printf("[转发]   └ 包 ID=%d (%s)", id, bedrockPacketName(id))
+			if debugLog {
+				log.Printf("[转发] 服务器→玩家 %d 字节: %x", n, pk[:min(n, 64)])
+				if id, ok := bedrockPacketID(pk); ok {
+					log.Printf("[转发]   └ 包 ID=%d (%s)", id, bedrockPacketName(id))
+				}
 			}
 			relayLogLine("[服务器→玩家]", pk)
 			out, err := serverToPlayer(&rstate, pk)
@@ -874,19 +885,31 @@ func fatalf(format string, args ...any) {
 	os.Exit(1)
 }
 
-// debugLogger 输出 pion 各子系统（ICE/DTLS/SCTP）的全部日志到 stderr。
+// debugLogger 输出 pion 各子系统（ICE/DTLS/SCTP）的日志到 stderr。
+// Debug/Info 仅在 -d / --debug 下输出（逐候选、逐 SACK，非常吵）；Warn/Error 始终输出。
 type debugLogger struct{}
 
 func (debugLogger) Trace(msg string)          {}
 func (debugLogger) Tracef(string, ...any)     {}
-func (debugLogger) Debug(msg string)          { log.Printf("[pion] %s", msg) }
-func (debugLogger) Debugf(f string, a ...any) { log.Printf("[pion] "+f, a...) }
-func (debugLogger) Info(msg string)           { log.Printf("[pion] %s", msg) }
-func (debugLogger) Infof(f string, a ...any)  { log.Printf("[pion] "+f, a...) }
+func (debugLogger) Debug(msg string)          { if debugLog { log.Printf("[pion] %s", msg) } }
+func (debugLogger) Debugf(f string, a ...any) { if debugLog { log.Printf("[pion] "+f, a...) } }
+func (debugLogger) Info(msg string)           { if debugLog { log.Printf("[pion] %s", msg) } }
+func (debugLogger) Infof(f string, a ...any)  { if debugLog { log.Printf("[pion] "+f, a...) } }
 func (debugLogger) Warn(msg string)           { log.Printf("[pion] %s", msg) }
 func (debugLogger) Warnf(f string, a ...any)  { log.Printf("[pion] "+f, a...) }
 func (debugLogger) Error(msg string)          { log.Printf("[pion] %s", msg) }
 func (debugLogger) Errorf(f string, a ...any) { log.Printf("[pion] "+f, a...) }
+
+// netherLogger 是给 NetherNet 子模块（nemc-tan-lobby-solver）用的 logger。
+// 该子模块的 Info 级日志是逐包 hex（ReliableDataChannel raw message 等），默认只放行
+// Warn 及以上；加 -d / --debug 后全部放行。
+func netherLogger() *slog.Logger {
+	level := slog.LevelWarn
+	if debugLog {
+		level = slog.LevelDebug
+	}
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+}
 
 type debugLoggerFactory struct{}
 

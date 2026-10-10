@@ -289,6 +289,8 @@ func (g *gateway) serve(roomCtx context.Context, host *session) {
 		api := webrtc.NewAPI(webrtc.WithSettingEngine(se))
 		var nl nethernet.ListenConfig
 		nl.API = api
+		// 子模块的 Info 级日志是逐包 hex，默认只放行 Warn 及以上（-d/--debug 时全放行）
+		nl.Log = netherLogger()
 
 		listener, err := nl.Listen(wsConn)
 		if err != nil {

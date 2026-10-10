@@ -95,7 +95,7 @@ const defaultLevelID = "r6YhQdny6LU="
 func main() {
 	var (
 		username     = flag.String("u", "", "4399 用户名")
-		password     = flag.String("pass", "", "4399 密码（原 -p；-p 现在表示 Web 控制台端口）")
+		password     = flag.String("p", "", "4399 密码（单房间 CLI 模式用；Web 控制台端口是 -port）")
 		roomName     = flag.String("room-name", "NeteaseBedrockGateway Host Room", "房间名称")
 		roomCapacity = flag.Uint("capacity", 8, "房间容量")
 		roomPassword = flag.String("room-password", "", "房间密码（可留空）")
@@ -116,7 +116,7 @@ func main() {
 		debugLong          = flag.Bool("debug", false, "同 -d（写成 --debug 亦可）")
 
 		// Web 控制台（不带参数启动即进入控制台模式）
-		webPort      = flag.Int("p", 8765, "Web 控制台端口（1-65535，默认 8765）")
+		webPort      = flag.Int("port", 8765, "Web 控制台端口（1-65535，默认 8765）")
 		installSvc   = flag.Bool("install", false, "注册为 systemd 服务（仅 Linux，需 root）")
 		uninstallSvc = flag.Bool("uninstall", false, "卸载已注册的 systemd 服务（仅 Linux，需 root）")
 		runConfig    = flag.String("run", "", "内部模式：按 JSON 配置运行单个开房实例（由 Web 控制台拉起）")
@@ -181,8 +181,8 @@ func main() {
 	}
 
 	if *username == "" || *password == "" || *target == "" {
-		fmt.Fprintln(os.Stderr, "用法1（Web 控制台）: NeteaseBedrockGateway [-p 端口] [-install|-uninstall] [-web-root 目录]")
-		fmt.Fprintln(os.Stderr, "用法2（单房间 CLI）: NeteaseBedrockGateway -u 用户名 -pass 密码 -target 服务器IP/域名:端口 [-server-address 房主地址] [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔] [-d|--debug]")
+		fmt.Fprintln(os.Stderr, "用法1（Web 控制台）: NeteaseBedrockGateway [-port 端口] [-install|-uninstall] [-web-root 目录]")
+		fmt.Fprintln(os.Stderr, "用法2（单房间 CLI）: NeteaseBedrockGateway -u 用户名 -p 密码 -target 服务器IP/域名:端口 [-server-address 房主地址] [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔] [-d|--debug]")
 		if *username != "" && *password != "" && *target == "" {
 			fmt.Fprintln(os.Stderr, "错误: -target 必填（玩家流量转发目标，例如 -target 服务器IP/域名:49780）")
 		}
@@ -2683,7 +2683,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%s
-ExecStart=%s -p %d
+ExecStart=%s -port %d
 Restart=always
 RestartSec=10
 StandardOutput=append:%s/host.log

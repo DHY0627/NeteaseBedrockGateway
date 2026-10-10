@@ -291,7 +291,7 @@ cat /opt/netease-gateway/room.txt         # 看当前房间号
 
 ```bash
 NeteaseBedrockGateway                 # 不带参数启动 = 进控制台，默认 http://127.0.0.1:8765/
-NeteaseBedrockGateway -p 8765         # 指定控制台端口（1-65535）
+NeteaseBedrockGateway -port 8765      # 指定控制台端口（1-65535）
 NeteaseBedrockGateway -install        # 注册为 systemd 服务（仅 Linux，需 root）
 NeteaseBedrockGateway -uninstall      # 卸载该 systemd 服务（仅 Linux，需 root）
 ```
@@ -333,8 +333,8 @@ NeteaseBedrockGateway -uninstall      # 卸载该 systemd 服务（仅 Linux，�
 | 参数                | 默认值                               | 说明                                       |
 | ----------------- | --------------------------------- | ---------------------------------------- |
 | `-u`              | —                                 | 4399 用户名（**单房间 CLI 模式**用；只跑 Web 控制台不需要） |
-| `-pass`           | —                                 | 4399 密码（单房间 CLI 模式用）。**注意：原来叫 `-p`**，因为 `-p` 现在是控制台端口 |
-| `-p`              | `8765`                            | **Web 控制台端口**（1-65535）                     |
+| `-p`              | —                                 | 4399 密码（**单房间 CLI 模式**用；只跑 Web 控制台不需要） |
+| `-port`           | `8765`                            | **Web 控制台端口**（1-65535）                     |
 | `-room-name`      | `NeteaseBedrockGateway Host Room` | 房间名称（其实没用）                               |
 | `-capacity`       | `8`                               | 房间容量                                     |
 | `-room-password`  | 空                                 | 房间密码（留空 = 无密码）                           |

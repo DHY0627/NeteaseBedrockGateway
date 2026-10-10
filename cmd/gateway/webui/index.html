@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网关控制台 · NeteaseBedrockGateway</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<!-- ===================== 顶栏 ===================== -->
+<header>
+  <div class="navbar">
+    <div class="navbar-inner">
+      <a class="navbar-brand" href="index.html">NeteaseBedrockGateway</a>
+      <span class="navbar-meta" id="topMeta">Web 控制台 127.0.0.1:8765（仅本机）</span>
+      <button class="btn btn-sm" id="btnLogout">退出登录</button>
+    </div>
+  </div>
+</header>
+
+<main>
+<div class="container">
+
+  <!-- ===================== 账号管理 ===================== -->
+  <div class="card">
+    <h3>账号管理</h3>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:26%">备注</th>
+          <th style="width:26%">4399 账号</th>
+          <th style="width:22%">密码</th>
+          <th style="width:12%">使用中</th>
+          <th style="width:14%" class="actions">操作</th>
+        </tr>
+      </thead>
+      <tbody id="accountBody"><!-- JS 渲染 --></tbody>
+    </table>
+
+    <div style="margin-top:14px">
+      <button class="btn btn-primary" id="btnAddAccount">添加账号</button>
+    </div>
+  </div>
+
+  <!-- ===================== 实例列表 ===================== -->
+  <div class="section-head">
+    <h2>网关实例</h2>
+    <span class="count" id="instanceCount">0</span>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" id="btnCreateInstance">创建实例</button>
+  </div>
+
+
+  <div class="instances" id="instanceList"><!-- JS 渲染 --></div>
+
+  <!-- ===================== 全局设置 ===================== -->
+  <div class="card" style="margin-top:22px">
+    <h3>全局设置</h3>
+
+    <div class="grid-2">
+      <div class="field">
+        <label for="gsUser">控制台用户名</label>
+        <input type="text" id="gsUser" value="user" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="gsPass">控制台密码</label>
+        <input type="password" id="gsPass" placeholder="留空表示不更改密码" autocomplete="new-password">
+        <div class="desc">留空即保持现有密码不变；修改后下次登录生效。</div>
+      </div>
+    </div>
+
+    <div class="field" style="margin-top:4px">
+      <label class="checkbox">
+        <input type="checkbox" id="gsPublic">
+        <span>允许公网访问</span>
+      </label>
+    </div>
+
+    <div class="modal-foot" style="margin:16px -20px -18px; border-radius:0 0 8px 8px">
+      <button class="btn" id="gsReset">取消</button>
+      <button class="btn btn-primary" id="gsSave">保存</button>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- ===================== 弹窗：账号 ===================== -->
+<div class="modal-mask" id="accountModal">
+  <div class="modal">
+    <div class="modal-head"><span id="accountModalTitle">添加账号</span><div class="spacer"></div>
+      <button class="close" data-close="accountModal">×</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="acNote">备注</label>
+        <input type="text" id="acNote" placeholder="例如：主账号">
+      </div>
+      <div class="field">
+        <label for="acAccount">4399 账号<span class="req">*</span></label>
+        <input type="text" id="acAccount" placeholder="4399 用户名" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="acPassword">4399 密码<span class="req">*</span></label>
+        <input type="password" id="acPassword" placeholder="4399 密码（编辑时留空 = 不更改）" autocomplete="new-password">
+      </div>
+      <div class="alert alert-warn" style="margin:0">
+        账号密码会以明文保存在网关的配置文件里（与命令行 <code>-u/-p</code> 等价），
+        请确保该文件权限收紧（<code class="mono">chmod 600</code>）。
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close="accountModal">取消</button>
+      <button class="btn btn-primary" id="accountSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 弹窗：创建 / 编辑实例 ===================== -->
+<div class="modal-mask" id="instanceModal">
+  <div class="modal">
+    <div class="modal-head"><span id="instanceModalTitle">创建实例</span><div class="spacer"></div>
+      <button class="close" data-close="instanceModal">×</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="inName">实例名称</label>
+        <input type="text" id="inName" placeholder="例如：主服">
+      </div>
+      <div class="field">
+        <label for="inAccount">使用账号<span class="req">*</span></label>
+        <select id="inAccount"></select>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label for="inTarget">服务器 IP:端口<span class="req">*</span></label>
+          <input type="text" id="inTarget" placeholder="192.168.1.61:49780">
+          <div class="desc">玩家流量的转发目标（Geyser 的 RakNet 端口）。</div>
+        </div>
+        <div class="field">
+          <label for="inCapacity">最大人数</label>
+          <input type="number" id="inCapacity" value="8" min="1" max="100">
+        </div>
+      </div>
+      <div class="field">
+        <label for="inRoomPassword">房间密码</label>
+        <input type="text" id="inRoomPassword" placeholder="留空 = 无密码（知道房间号即可进）">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close="instanceModal">取消</button>
+      <button class="btn btn-primary" id="instanceSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 弹窗：创建 / 编辑命令行 ===================== -->
+<div class="modal-mask" id="cmdModal">
+  <div class="modal wide">
+    <div class="modal-head"><span id="cmdModalTitle">创建命令行</span><div class="spacer"></div>
+      <button class="close" data-close="cmdModal">×</button></div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="field">
+          <label for="cmdTrigger">触发条件<span class="req">*</span></label>
+          <select id="cmdTrigger">
+            <option value="instance.start">网关启动</option>
+            <option value="instance.stop">网关停止</option>
+            <option value="account.login">登录成功</option>
+            <option value="room.created">房间创建成功</option>
+            <option value="room.changed" selected>房间号变化</option>
+            <option value="room.recreated">房间重建</option>
+            <option value="player.join">玩家加入</option>
+            <option value="player.leave">玩家离开</option>
+            <option value="keepalive.fail">房间存活检查失败</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>启用</label>
+          <label class="checkbox" style="height:34px; align-items:center">
+            <input type="checkbox" id="cmdEnabled" checked>
+            <span>启用这条命令</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="cmdLine">命令行<span class="req">*</span></label>
+        <textarea id="cmdLine" rows="3" placeholder="例如：bash /opt/notify.sh '房间号已变更为 {&roomid}'"></textarea>
+        <div class="desc">按 <code class="mono">/bin/sh -c</code> 执行（Windows 下由 <code class="mono">cmd /c</code> 执行）。
+          点击下面的占位符可插入到光标处，执行时会被替换成实际值。</div>
+        <div class="ph-list" id="phList"><!-- JS 渲染 --></div>
+      </div>
+
+      <div class="field" style="margin-bottom:0">
+        <label for="cmdNote">备注</label>
+        <input type="text" id="cmdNote" placeholder="例如：改完房间号往群里发通知">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close="cmdModal">取消</button>
+      <button class="btn btn-primary" id="cmdSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 弹窗：网关日志 ===================== -->
+<div class="modal-mask" id="logModal">
+  <div class="modal wide">
+    <div class="modal-head"><span id="logTitle">网关日志</span><div class="spacer"></div>
+      <button class="close" data-close="logModal">×</button></div>
+    <div class="modal-body">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px">
+        <label class="checkbox"><input type="checkbox" id="logAutoscroll" checked><span>自动滚动</span></label>
+        <div class="spacer" style="flex:1"></div>
+        <button class="btn btn-sm" id="logRefresh">刷新</button>
+        <button class="btn btn-sm" id="logClear">清空</button>
+        <button class="btn btn-sm" id="logCopy">复制</button>
+        <button class="btn btn-sm" id="logDownload">下载</button>
+      </div>
+      <div class="logview" id="logView"></div>
+      <div class="desc" style="margin-top:8px">
+        默认只输出关键事件（登录 / 建房 / 玩家进出 / 保活）。要看到逐帧 hex、pion(ICE/DTLS/SCTP)
+        与 NetherNet 信令细节，请在实例的启动参数里加 <code class="mono">-d</code> 或 <code class="mono">--debug</code>。
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-area"></div>
+<script src="assets/app.js"></script>
+</body>
+</html>

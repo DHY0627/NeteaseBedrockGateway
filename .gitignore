@@ -56,3 +56,7 @@ desktop.ini
 *.test
 *.out
 coverage.txt
+
+# ===== Web 控制台运行时文件（含加密凭据，绝不入库）=====
+nbg-console.json
+instances/

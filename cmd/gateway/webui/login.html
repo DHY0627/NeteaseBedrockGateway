@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>登录 · NeteaseBedrockGateway 控制台</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header>
+  <div class="navbar">
+    <div class="navbar-inner">
+      <a class="navbar-brand" href="login.html">NeteaseBedrockGateway</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="login-row">
+    <form class="portlet" id="loginForm" autocomplete="off">
+      <h5 class="portlet__head">登录</h5>
+
+      <div class="portlet__body">
+        <div class="login-error" id="errBox"></div>
+
+        <div class="form-row">
+          <label class="form-label" for="username">用户名</label>
+          <div class="form-field">
+            <input type="text" id="username" name="username" autofocus autocomplete="username">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label" for="password">密码</label>
+          <div class="form-field">
+            <input type="password" id="password" name="password" autocomplete="current-password">
+          </div>
+        </div>
+
+        <div class="form-row login-btn-row" style="margin-bottom:0">
+          <div class="spacer-label"></div>
+          <button type="submit" class="btn btn-primary login_btn" id="loginBtn">登录</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</main>
+
+<script>
+/* 真实登录：POST /api/login（成功后后端下发会话 Cookie，不带 Max-Age → 关标签页即失效） */
+const form = document.getElementById('loginForm');
+const errBox = document.getElementById('errBox');
+const btn = document.getElementById('loginBtn');
+
+function showError(msg) {
+  errBox.textContent = msg;
+  errBox.classList.add('show');
+}
+
+form.addEventListener('submit', async function (e) {
+  e.preventDefault();
+  errBox.classList.remove('show');
+  btn.disabled = true;
+  btn.textContent = '登录中 ...';
+  try {
+    const r = await fetch('api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+      }),
+    });
+    const txt = await r.text();
+    let data = null;
+    try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = null; }
+    if (r.ok) {
+      location.replace('index.html');
+      return;
+    }
+    showError((data && data.msg) ? data.msg : ('登录失败（HTTP ' + r.status + '）'));
+  } catch (err) {
+    showError('无法连接网关：' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '登录';
+  }
+});
+
+/* 已登录则直接进管理页 */
+(async function () {
+  try {
+    const r = await fetch('api/session', { credentials: 'same-origin' });
+    const s = await r.json();
+    if (s && s.loggedIn) location.replace('index.html');
+  } catch (e) { /* 忽略：留着让用户手动登录 */ }
+})();
+</script>
+</body>
+</html>

@@ -363,6 +363,23 @@ td.actions { white-space: nowrap; text-align: right; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .cmdrow .cmd.off { color: #bfbfbf; text-decoration: line-through; }
+
+/* 短信验证码输入：只在「网易手机号（短信验证码）」实例运行时出现 */
+.smsrow {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.smsrow .k { color: var(--text-secondary); font-size: 13px; white-space: nowrap; }
+.smsrow input[type=text] {
+  flex: 0 1 190px; width: 190px;
+  height: 28px; padding: 0 8px;
+  font-size: 13px; letter-spacing: 1px;
+}
+.smsrow .hint { color: var(--text-secondary); font-size: 12px; }
 .cmd-empty { color: var(--text-secondary); font-size: 12px; padding: 6px 2px; }
 
 /* ==========================================================================

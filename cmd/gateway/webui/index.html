@@ -29,11 +29,12 @@
     <table>
       <thead>
         <tr>
-          <th style="width:26%">备注</th>
-          <th style="width:26%">4399 账号</th>
-          <th style="width:22%">密码</th>
+          <th style="width:20%">备注</th>
+          <th style="width:14%">登录方式</th>
+          <th style="width:22%">账号</th>
+          <th style="width:16%">凭据</th>
           <th style="width:12%">使用中</th>
-          <th style="width:14%" class="actions">操作</th>
+          <th style="width:16%" class="actions">操作</th>
         </tr>
       </thead>
       <tbody id="accountBody"><!-- JS 渲染 --></tbody>
@@ -98,16 +99,31 @@
         <input type="text" id="acNote" placeholder="例如：主账号">
       </div>
       <div class="field">
-        <label for="acAccount">4399 账号<span class="req">*</span></label>
+        <label for="acMode">登录方式<span class="req">*</span></label>
+        <select id="acMode">
+          <option value="4399">4399 账号（账号 + 密码）</option>
+          <option value="netease-email">网易邮箱（邮箱 + 密码）</option>
+          <option value="netease-phone">网易手机号（手机号 + 密码）</option>
+          <option value="netease-sms">网易手机号（短信验证码）</option>
+          <option value="sauth">SAuth 登录态（粘贴 sauth_json）</option>
+        </select>
+      </div>
+      <div class="field" id="acAccountField">
+        <label for="acAccount" id="acAccountLabel">账号<span class="req">*</span></label>
         <input type="text" id="acAccount" placeholder="4399 用户名" autocomplete="off">
       </div>
-      <div class="field">
-        <label for="acPassword">4399 密码<span class="req">*</span></label>
-        <input type="password" id="acPassword" placeholder="4399 密码（编辑时留空 = 不更改）" autocomplete="new-password">
+      <div class="field" id="acPasswordField">
+        <label for="acPassword" id="acPasswordLabel">密码<span class="req">*</span></label>
+        <input type="password" id="acPassword" placeholder="密码（编辑时留空 = 不更改）" autocomplete="new-password">
+      </div>
+      <div class="field" id="acSauthField" hidden>
+        <label for="acSauth">sauth_json<span class="req">*</span></label>
+        <textarea id="acSauth" rows="4" placeholder='{"gameid":"x19","sdkuid":"...","sessionid":"...","platform":"pc"}'></textarea>
+        <div class="desc">裸 JSON 或 <code class="mono">{"sauth_json":"..."}</code> 包裹都可以；编辑时留空 = 不更改。</div>
       </div>
       <div class="alert alert-warn" style="margin:0">
-        账号密码会以明文保存在网关的配置文件里（与命令行 <code>-u/-p</code> 等价），
-        请确保该文件权限收紧（<code class="mono">chmod 600</code>）。
+        账号密码 / sauth 登录态会用控制台密码加密后保存在 <code class="mono">nbg-console.json</code>（权限 600），
+        登录时才解密到内存。
       </div>
     </div>
     <div class="modal-foot">

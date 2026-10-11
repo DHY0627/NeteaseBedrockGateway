@@ -55,7 +55,11 @@ import (
 	"syscall"
 	"time"
 
+	"NeteaseBedrockGateway/internal/netease"
 	"NeteaseBedrockGateway/internal/room"
+	"NeteaseBedrockGateway/internal/wplauncher"
+
+	funauth "NeteaseBedrockGateway/internal/auth"
 
 	"github.com/Happy2018new/nemc-tan-lobby-solver/core/nethernet"
 	"github.com/Happy2018new/nemc-tan-lobby-solver/core/raknet"
@@ -115,6 +119,12 @@ func main() {
 		debugShort         = flag.Bool("d", false, "输出详细日志：逐帧 hex、pion(ICE/DTLS/SCTP)、NetherNet 信令细节")
 		debugLong          = flag.Bool("debug", false, "同 -d（写成 --debug 亦可）")
 
+		// 账号登录方式（单房间 CLI 模式；Web 控制台在账号里选）
+		loginModeFlag = flag.String("login-mode", "4399", "账号登录方式：4399 / netease-email（网易邮箱+密码）/ netease-phone（网易手机号+密码）/ netease-sms（网易手机号+短信）/ sauth（直接给 sauth 登录态）")
+		sauthFlag     = flag.String("sauth", "", "SAuth 登录态（-login-mode sauth 时使用）：直接给 sauth_json 内容，或 @路径 从文件读")
+		smsCodeFlag   = flag.String("sms-code", "", "网易短信登录的验证码（-login-mode netease-sms；留空则在终端交互输入）")
+		deviceCache   = flag.String("device-cache", "", "网易登录的设备信息缓存文件（默认 <用户目录>/.neteasebedrockgateway/device.json）")
+
 		// Web 控制台（不带参数启动即进入控制台模式）
 		webPort      = flag.Int("port", 8765, "Web 控制台端口（1-65535，默认 8765）")
 		installSvc   = flag.Bool("install", false, "注册为 systemd 服务（仅 Linux，需 root）")
@@ -122,18 +132,27 @@ func main() {
 		runConfig    = flag.String("run", "", "内部模式：按 JSON 配置运行单个开房实例（由 Web 控制台拉起）")
 		webRoot      = flag.String("web-root", "", "Web 静态文件目录（默认自动查找 exe 旁的 web/ 或 ./web）")
 	)
+	// instanceDir 由 -run 模式的配置给出：短信登录时子进程在这里轮询 smscode.txt
+	instanceDir := ""
 	flag.Parse()
 	netherMsgLimit = *netherMsgLimitFlag
 	debugLog = *debugShort || *debugLong
 
 	// ---------------- 模式分派 ----------------
-	// 1) -run <file>：由 Web 控制台拉起的单实例模式。参数从 JSON 读，4399 密码不出现在命令行里。
+	// 1) -run <file>：由 Web 控制台拉起的单实例模式。参数从 JSON 读，账号密码不出现在命令行里。
 	if *runConfig != "" {
 		rc, err := loadRunConfig(*runConfig)
 		if err != nil {
 			fatalf("读取实例配置失败: %v", err)
 		}
 		*username, *password = rc.Username, rc.Password
+		if rc.LoginMode != "" {
+			*loginModeFlag = rc.LoginMode
+		}
+		*sauthFlag = rc.Sauth
+		if rc.InstanceDir != "" {
+			instanceDir = rc.InstanceDir
+		}
 		*roomName, *roomPassword = rc.RoomName, rc.RoomPassword
 		if rc.Capacity > 0 {
 			*roomCapacity = rc.Capacity
@@ -180,14 +199,49 @@ func main() {
 		return
 	}
 
-	if *username == "" || *password == "" || *target == "" {
+	// 登录方式与「这个方式需要的参数」校验
+	mode, modeErr := funauth.ParseLoginMode(*loginModeFlag)
+	if modeErr != nil {
+		fmt.Fprintf(os.Stderr, "错误: %v\n", modeErr)
+		os.Exit(2)
+	}
+	if mode == funauth.ModeSauth && strings.HasPrefix(*sauthFlag, "@") {
+		p := strings.TrimPrefix(*sauthFlag, "@")
+		b, err := os.ReadFile(p)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "错误: 读取 sauth 文件失败: %v\n", err)
+			os.Exit(2)
+		}
+		*sauthFlag = strings.TrimSpace(string(b))
+	}
+
+	usage := func(extra string) {
 		fmt.Fprintln(os.Stderr, "用法1（Web 控制台）: NeteaseBedrockGateway [-port 端口] [-install|-uninstall] [-web-root 目录]")
-		fmt.Fprintln(os.Stderr, "用法2（单房间 CLI）: NeteaseBedrockGateway -u 用户名 -p 密码 -target 服务器IP/域名:端口 [-server-address 房主地址] [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔] [-d|--debug]")
-		if *username != "" && *password != "" && *target == "" {
-			fmt.Fprintln(os.Stderr, "错误: -target 必填（玩家流量转发目标，例如 -target 服务器IP/域名:49780）")
+		fmt.Fprintln(os.Stderr, "用法2（单房间 CLI）: NeteaseBedrockGateway -u 账号 -p 密码 -target 服务器IP/域名:端口 [-login-mode 方式] [-sauth 登录态|@文件] [-sms-code 验证码] [-device-cache 路径] [-server-address 房主地址] [-room-name 名称] [-capacity 容量] [-room-password 密码] [-map-id ID] [-protocol-id ID] [-level-id 版本] [-game-type 类型] [-version-string 版本字符串] [-room-file 落盘文件] [-keepalive 间隔] [-d|--debug]")
+		fmt.Fprintln(os.Stderr, "登录方式: 4399（默认，需 -u -p）/ netease-email（网易邮箱+密码）/ netease-phone（网易手机号+密码）/ netease-sms（网易手机号+短信，需 -sms-code 或在终端输入）/ sauth（需 -sauth）")
+		if extra != "" {
+			fmt.Fprintln(os.Stderr, "错误: "+extra)
 		}
 		flag.Usage()
 		os.Exit(2)
+	}
+
+	switch mode {
+	case funauth.ModeSauth:
+		if *sauthFlag == "" {
+			usage("-login-mode sauth 需要 -sauth 提供 sauth 登录态（内容或 @文件路径）")
+		}
+	case funauth.ModeNetEaseSms:
+		if *username == "" {
+			usage("-login-mode netease-sms 需要 -u 提供手机号")
+		}
+	default:
+		if *username == "" || *password == "" {
+			usage(fmt.Sprintf("-login-mode %s 需要 -u 账号与 -p 密码", mode))
+		}
+	}
+	if *target == "" {
+		usage("-target 必填（玩家流量转发目标，例如 -target 服务器IP/域名:49780）")
 	}
 	// -server-address 是「玩家去哪找房主」，-target 是「玩家流量转发到哪」。
 	// 二者绝大多数情况下相同（同一台机器、同一个 RakNet 端口），留空即继承 -target。
@@ -217,11 +271,26 @@ func main() {
 	// pion 各子系统（ICE/DTLS/SCTP）的 Debug 日志，便于排查连接建立过程
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
+	// 短信登录：验证码由人工提供（CLI 交互 / 网页面板写文件）
+	var onSmsCode func(*netease.SmsChallenge) (string, error)
+	if mode == funauth.ModeNetEaseSms {
+		if instanceDir != "" {
+			onSmsCode = smsCodeHandlerForInstance(instanceDir)
+		} else {
+			onSmsCode = smsCodeHandlerForCLI(*smsCodeFlag)
+		}
+	}
+
 	// 生命周期交给 gateway：登录 → 开房 → 监听服务；房间失效（中转断开/被回收）自动重建。
-	log.Printf("[房主] 转发目标: %s，上报房主地址: %s，房间信息落盘: %s，存活检查间隔: %s，详细日志: %v", *target, *serverAddr, *roomFile, *keepalive, debugLog)
+	log.Printf("[房主] 登录方式: %s，转发目标: %s，上报房主地址: %s，房间信息落盘: %s，存活检查间隔: %s，详细日志: %v", funauth.ModeLabel(mode), *target, *serverAddr, *roomFile, *keepalive, debugLog)
 	g := &gateway{cfg: gatewayConfig{
 		username:      *username,
 		password:      *password,
+		loginMode:     mode,
+		sauth:         *sauthFlag,
+		deviceCache:   *deviceCache,
+		onSmsCode:     onSmsCode,
+		onNotice:      func(msg string) { log.Printf("[网易] %s", msg) },
 		roomName:      *roomName,
 		roomCapacity:  *roomCapacity,
 		roomPassword:  *roomPassword,
@@ -1036,13 +1105,20 @@ type consoleSettings struct {
 }
 
 type consoleAccount struct {
-	ID      string `json:"id"`
-	Note    string `json:"note"`
+	ID   string `json:"id"`
+	Note string `json:"note"`
+	// Mode 是登录方式：4399 / netease-email / netease-phone / netease-sms / sauth
+	// 空值表示老配置，按 4399 处理。
+	Mode    string `json:"mode,omitempty"`
 	Account string `json:"account"`
-	// PasswordEnc 是 AES-256-GCM 加密后的 4399 密码（base64(nonce||密文)）
+	// PasswordEnc 是 AES-256-GCM 加密后的账号密码（base64(nonce||密文)）
 	PasswordEnc string `json:"passwordEnc,omitempty"`
 	// Password 仅用于兼容老配置里的明文，迁移后清空
 	Password string `json:"password,omitempty"`
+	// SauthEnc 是 AES-256-GCM 加密后的 sauth 登录态（仅 mode=sauth）
+	SauthEnc string `json:"sauthEnc,omitempty"`
+	// Sauth 只在提交请求里出现（明文输入），落盘前一定被加密并清空
+	Sauth string `json:"sauth,omitempty"`
 }
 
 type consoleCommand struct {
@@ -1066,10 +1142,19 @@ type consoleInstance struct {
 // publicAccount 是返回给前端的账号视图：只给账号名与掩码密码，
 // 绝不下发明文、密文或加密密钥。
 type publicAccount struct {
-	ID           string `json:"id"`
-	Note         string `json:"note"`
-	Account      string `json:"account"`
+	ID   string `json:"id"`
+	Note string `json:"note"`
+	// Mode 是登录方式（空值按 4399 处理）
+	Mode    string `json:"mode"`
+	Account string `json:"account"`
+	// PasswordMask 只在需要密码的登录方式下有意义
 	PasswordMask string `json:"passwordMask"`
+	// HasSauth 表示该账号已保存 sauth 登录态
+	HasSauth bool `json:"hasSauth"`
+	// SauthMask 是 sauth 登录态的显示掩码（永不回传原文）
+	SauthMask string `json:"sauthMask,omitempty"`
+	// ModeLabel 是登录方式的中文名，前端直接显示
+	ModeLabel string `json:"modeLabel"`
 }
 
 // maskSecret 只保留前 2 位，其余打点；不足 3 位全部打点。
@@ -1087,15 +1172,37 @@ func maskSecret(s string) string {
 
 // accountView 生成对外视图（能解密时用真实长度做掩码，否则退回长度未知的固定掩码）。
 func (c *console) accountView(a consoleAccount) publicAccount {
-	mask := ""
-	if plain, err := c.accountSecret(a); err == nil && plain != "" {
-		mask = maskSecret(plain)
-	} else if a.Password != "" {
-		mask = maskSecret(a.Password)
-	} else {
-		mask = "••••••"
+	mode, err := funauth.ParseLoginMode(a.Mode)
+	if err != nil {
+		mode = funauth.Mode4399
 	}
-	return publicAccount{ID: a.ID, Note: a.Note, Account: a.Account, PasswordMask: mask}
+	v := publicAccount{
+		ID: a.ID, Note: a.Note, Account: c.accountDisplayName(a, mode),
+		Mode: string(mode), ModeLabel: funauth.ModeLabel(mode),
+	}
+
+	// 密码掩码：只有需要密码的方式才显示
+	if mode == funauth.Mode4399 || mode == funauth.ModeNetEaseEmail || mode == funauth.ModeNetEasePhone {
+		switch {
+		case a.PasswordEnc != "":
+			if plain, err := c.decryptSecret(a.PasswordEnc); err == nil && plain != "" {
+				v.PasswordMask = maskSecret(plain)
+			} else {
+				v.PasswordMask = "••••••"
+			}
+		case a.Password != "":
+			v.PasswordMask = maskSecret(a.Password)
+		default:
+			v.PasswordMask = "••••••"
+		}
+	}
+
+	// sauth 登录态：只给「已保存」与固定掩码
+	if mode == funauth.ModeSauth && a.SauthEnc != "" {
+		v.HasSauth = true
+		v.SauthMask = "••••••"
+	}
+	return v
 }
 
 type consoleState struct {
@@ -1417,7 +1524,7 @@ func (c *console) decryptSecret(enc string) (string, error) {
 	return out, nil
 }
 
-// accountSecret 取出账号的 4399 密码：优先解密 passwordEnc，兼容老配置的明文。
+// accountSecret 取出账号的密码：优先解密 passwordEnc，兼容老配置的明文。
 func (c *console) accountSecret(a consoleAccount) (string, error) {
 	if a.PasswordEnc != "" {
 		return c.decryptSecret(a.PasswordEnc)
@@ -1425,9 +1532,122 @@ func (c *console) accountSecret(a consoleAccount) (string, error) {
 	return a.Password, nil
 }
 
+// accountSauth 取出账号的 sauth 登录态（仅 mode=sauth 时有值）。
+func (c *console) accountSauth(a consoleAccount) (string, error) {
+	if a.SauthEnc == "" {
+		return "", nil
+	}
+	return c.decryptSecret(a.SauthEnc)
+}
+
+// accountDisplayName 返回账号在列表/实例卡片上显示的名字。
+// sauth 方式没有账号名，能解密时用登录态里的 sdkuid 代替，方便区分多个登录态。
+//
+// 注意：调用方可能持有 c.mu，本函数自身不加锁。
+func (c *console) accountDisplayName(a consoleAccount, mode funauth.LoginMode) string {
+	if a.Account != "" {
+		return a.Account
+	}
+	if mode != funauth.ModeSauth {
+		return ""
+	}
+	if raw, err := c.accountSauth(a); err == nil && raw != "" {
+		if cookie, err := wplauncher.ParseSauthCookie(raw); err == nil {
+			if uid := cookie.SDKUid(); uid != "" {
+				return uid
+			}
+		}
+	}
+	return "SAuth 登录态"
+}
+
+// validateAccountInput 归一化登录方式并校验「这个登录方式需要的字段」。
+// 明文密码/Sauth 在调用 encryptAccountSecrets 之前只存在于内存。
+func validateAccountInput(a *consoleAccount, creating bool) (funauth.LoginMode, error) {
+	mode, err := funauth.ParseLoginMode(a.Mode)
+	if err != nil {
+		return "", err
+	}
+	a.Mode = string(mode)
+	a.Account = strings.TrimSpace(a.Account)
+	a.Sauth = strings.TrimSpace(a.Sauth)
+
+	switch mode {
+	case funauth.Mode4399:
+		if a.Account == "" {
+			return mode, errors.New("请填写 4399 账号")
+		}
+		if a.Password == "" && a.PasswordEnc == "" {
+			return mode, errors.New("请填写 4399 密码")
+		}
+	case funauth.ModeNetEaseEmail:
+		if !strings.Contains(a.Account, "@") {
+			return mode, errors.New("网易邮箱登录需要完整邮箱地址")
+		}
+		if a.Password == "" && a.PasswordEnc == "" {
+			return mode, errors.New("请填写网易账号密码")
+		}
+	case funauth.ModeNetEasePhone:
+		if !netease.IsPhoneNumber(a.Account) {
+			return mode, errors.New("网易手机号登录需要 11 位手机号")
+		}
+		if a.Password == "" && a.PasswordEnc == "" {
+			return mode, errors.New("请填写网易账号密码")
+		}
+	case funauth.ModeNetEaseSms:
+		if !netease.IsPhoneNumber(a.Account) {
+			return mode, errors.New("短信登录需要 11 位手机号")
+		}
+	case funauth.ModeSauth:
+		if a.Sauth == "" && a.SauthEnc == "" {
+			return mode, errors.New("请粘贴 sauth 登录态")
+		}
+		if a.Sauth != "" {
+			if _, err := wplauncher.ParseSauthCookie(a.Sauth); err != nil {
+				return mode, fmt.Errorf("sauth 登录态无效: %v", err)
+			}
+		}
+	}
+	return mode, nil
+}
+
+// encryptAccountSecrets 把明文密码/sauth 加密进 PasswordEnc/SauthEnc，
+// 并立即清空明文与「已不再属于当前登录方式」的字段。
+func (c *console) encryptAccountSecrets(a *consoleAccount, mode funauth.LoginMode) error {
+	if a.Password != "" {
+		enc, err := c.encryptSecret(a.Password)
+		if err != nil {
+			return err
+		}
+		a.PasswordEnc = enc
+	}
+	a.Password = ""
+
+	if a.Sauth != "" {
+		enc, err := c.encryptSecret(a.Sauth)
+		if err != nil {
+			return err
+		}
+		a.SauthEnc = enc
+	}
+	a.Sauth = ""
+
+	// 切到不需要密码的方式后，清掉历史密码，避免存档里留下用不到的密文
+	if mode == funauth.ModeNetEaseSms || mode == funauth.ModeSauth {
+		a.PasswordEnc, a.Password = "", ""
+	}
+	if mode != funauth.ModeSauth {
+		a.SauthEnc = ""
+	}
+	return nil
+}
+
 // migrateAccountsLocked 把老配置里明文保存的密码就地加密（需持有 c.mu 且已登录）。
 func (c *console) migrateAccountsLocked() {
 	for i := range c.state.Accounts {
+		if c.state.Accounts[i].Mode == "" {
+			c.state.Accounts[i].Mode = string(funauth.Mode4399)
+		}
 		if c.state.Accounts[i].PasswordEnc == "" && c.state.Accounts[i].Password != "" {
 			if enc, err := c.encryptSecret(c.state.Accounts[i].Password); err == nil {
 				c.state.Accounts[i].PasswordEnc = enc
@@ -1676,17 +1896,16 @@ func (c *console) handleAccounts(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "请求体解析失败")
 			return
 		}
-		if a.Account == "" || a.Password == "" {
-			fail(w, 400, "账号和密码都要填")
-			return
-		}
-		enc, err := c.encryptSecret(a.Password)
+		mode, err := validateAccountInput(&a, true)
 		if err != nil {
 			fail(w, 400, err.Error())
 			return
 		}
-		a.PasswordEnc, a.Password = enc, ""
 		a.ID = newID("acc")
+		if err := c.encryptAccountSecrets(&a, mode); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
 		c.mu.Lock()
 		c.state.Accounts = append(c.state.Accounts, a)
 		c.saveLocked()
@@ -1715,18 +1934,30 @@ func (c *console) handleAccountOne(w http.ResponseWriter, r *http.Request) {
 		defer c.mu.Unlock()
 		for i := range c.state.Accounts {
 			if c.state.Accounts[i].ID == id {
+				cur := c.state.Accounts[i]
+				// 未显式改登录方式时保持原值
+				merged := cur
+				if in.Mode != "" {
+					merged.Mode = in.Mode
+				}
 				if in.Account != "" {
-					c.state.Accounts[i].Account = in.Account
+					merged.Account = in.Account
 				}
-				if in.Password != "" {
-					enc, err := c.encryptSecret(in.Password)
-					if err != nil {
-						fail(w, 400, err.Error())
-						return
-					}
-					c.state.Accounts[i].PasswordEnc, c.state.Accounts[i].Password = enc, ""
+				merged.Note = in.Note
+				// 只在真的提交了新密码/新 sauth 时才覆盖
+				merged.Password = in.Password
+				merged.Sauth = in.Sauth
+				mode, verr := validateAccountInput(&merged, false)
+				if verr != nil {
+					fail(w, 400, verr.Error())
+					return
 				}
-				c.state.Accounts[i].Note = in.Note
+				if err := c.encryptAccountSecrets(&merged, mode); err != nil {
+					fail(w, 400, err.Error())
+					return
+				}
+				merged.ID = cur.ID
+				c.state.Accounts[i] = merged
 				c.saveLocked()
 				view := c.accountView(c.state.Accounts[i])
 				ok(w, view)
@@ -1922,6 +2153,8 @@ func (c *console) handleInstanceSub(w http.ResponseWriter, r *http.Request) {
 		ok(w, c.instanceStatus(id))
 	case sub == "logs":
 		c.streamLogs(w, r, id)
+	case sub == "sms-code":
+		c.submitSmsCode(w, r, id)
 	case sub == "commands":
 		c.handleCommands(w, r, id, "")
 	case strings.HasPrefix(sub, "commands/"):
@@ -1949,20 +2182,29 @@ func (c *console) instanceView(inst consoleInstance) map[string]any {
 	if status == "" {
 		status = "stopped"
 	}
-	acc := ""
+	acc, accMode, accNote := "", "", ""
 	c.mu.Lock()
 	for _, a := range c.state.Accounts {
 		if a.ID == inst.AccountID {
-			acc = a.Account
+			m, err := funauth.ParseLoginMode(a.Mode)
+			if err != nil {
+				m = funauth.Mode4399
+			}
+			accMode = string(m)
+			acc = c.accountDisplayName(a, m)
+			accNote = a.Note
 			break
 		}
 	}
 	c.mu.Unlock()
+	// 短信登录需要人工输入验证码：把实例目录告诉前端，前端把验证码写到 smscode.txt
 	return map[string]any{
 		"id": inst.ID, "name": inst.Name, "accountId": inst.AccountID, "account": acc,
+		"accountNote": accNote, "loginMode": accMode, "loginModeLabel": funauth.ModeLabel(funauth.LoginMode(accMode)),
 		"target": inst.Target, "roomPassword": inst.RoomPassword, "capacity": inst.Capacity,
-		"commands": inst.Commands,
-		"status":   status, "roomId": roomID, "players": players, "msg": errMsg,
+		"commands":    inst.Commands,
+		"needSmsCode": accMode == string(funauth.ModeNetEaseSms),
+		"status":      status, "roomId": roomID, "players": players, "msg": errMsg,
 	}
 }
 
@@ -1991,8 +2233,14 @@ func (c *console) rtFor(id string) *instanceRuntime {
 
 // 实例配置文件：交给子进程的参数（避免密码出现在命令行里）
 type runConfigFile struct {
-	Username         string `json:"username"`
-	Password         string `json:"password"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	// LoginMode 登录方式：4399 / netease-email / netease-phone / netease-sms / sauth
+	LoginMode string `json:"loginMode,omitempty"`
+	// Sauth 仅 mode=sauth 时使用
+	Sauth string `json:"sauth,omitempty"`
+	// InstanceDir 实例目录：短信登录时子进程在这里轮询 smscode.txt 取验证码
+	InstanceDir      string `json:"instanceDir,omitempty"`
 	RoomName         string `json:"roomName"`
 	Capacity         uint   `json:"capacity"`
 	RoomPassword     string `json:"roomPassword"`
@@ -2032,6 +2280,20 @@ func (c *console) startInstance(w http.ResponseWriter, id string) {
 		fail(w, 400, "无法取出账号密码："+derr.Error()+"（登录后加密密钥才可用）")
 		return
 	}
+	accSauth, serr := c.accountSauth(acc)
+	if serr != nil {
+		fail(w, 400, "无法取出 sauth 登录态："+serr.Error()+"（登录后加密密钥才可用）")
+		return
+	}
+	mode, merr := funauth.ParseLoginMode(acc.Mode)
+	if merr != nil {
+		fail(w, 400, merr.Error())
+		return
+	}
+	if mode == funauth.ModeNetEaseSms {
+		// 上一轮留下的验证码不能复用
+		_ = os.Remove(filepath.Join(c.instanceDir(id), smsCodeFileName))
+	}
 
 	rt := c.rtFor(id)
 	rt.mu.Lock()
@@ -2057,6 +2319,7 @@ func (c *console) startInstance(w http.ResponseWriter, id string) {
 	cfgPath := filepath.Join(dir, "instance.json")
 	cfg := runConfigFile{
 		Username: acc.Account, Password: accSecret,
+		LoginMode: string(mode), Sauth: accSauth, InstanceDir: dir,
 		RoomName: inst.Name, Capacity: uint(inst.Capacity), RoomPassword: inst.RoomPassword,
 		Target: inst.Target, ServerAddress: inst.Target,
 		LevelID: defaultLevelID, VersionString: "1.21.120.0",
@@ -2556,8 +2819,9 @@ func (c *console) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		c.state.Settings.Username = strings.TrimSpace(in.User)
 		if in.Password != "" {
-			// 先用旧 key 解出全部账号密码，换 key 后再全部重新加密
+			// 先用旧 key 解出全部账号密码与 sauth，换 key 后再全部重新加密
 			plains := make([]string, len(c.state.Accounts))
+			sauths := make([]string, len(c.state.Accounts))
 			for i, a := range c.state.Accounts {
 				plain, err := c.accountSecret(a)
 				if err != nil {
@@ -2566,14 +2830,31 @@ func (c *console) handleSettings(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				plains[i] = plain
+				if a.SauthEnc != "" {
+					sa, err := c.decryptSecret(a.SauthEnc)
+					if err != nil {
+						c.mu.Unlock()
+						fail(w, 400, "更换密码失败：无法解密已有 sauth 登录态（"+err.Error()+"）")
+						return
+					}
+					sauths[i] = sa
+				}
 			}
 			c.setPassword(in.Password) // 新 key 已就位
 			for i := range c.state.Accounts {
-				if enc, err := c.encryptSecret(plains[i]); err == nil {
-					c.state.Accounts[i].PasswordEnc = enc
-					c.state.Accounts[i].Password = ""
+				if plains[i] != "" {
+					if enc, err := c.encryptSecret(plains[i]); err == nil {
+						c.state.Accounts[i].PasswordEnc = enc
+						c.state.Accounts[i].Password = ""
+					}
 				}
 				plains[i] = ""
+				if sauths[i] != "" {
+					if enc, err := c.encryptSecret(sauths[i]); err == nil {
+						c.state.Accounts[i].SauthEnc = enc
+					}
+				}
+				sauths[i] = ""
 			}
 		}
 		if in.PublicAccess != nil {
@@ -2587,6 +2868,128 @@ func (c *console) handleSettings(w http.ResponseWriter, r *http.Request) {
 	default:
 		fail(w, 405, "不支持的方法")
 	}
+}
+
+/* ============================ 短信验证码 ============================ */
+
+// smsCodeFileName 是「网页面板 → 子进程」传递短信验证码的文件名（放在实例目录里）。
+const smsCodeFileName = "smscode.txt"
+
+// submitSmsCode 接收前端输入的短信验证码，写盘给正在登录的子进程。
+func (c *console) submitSmsCode(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodPost {
+		fail(w, 405, "不支持的方法")
+		return
+	}
+	var in struct {
+		Code string `json:"code"`
+	}
+	if err := decodeBody(r, &in); err != nil {
+		fail(w, 400, "请求体解析失败")
+		return
+	}
+	code := strings.TrimSpace(in.Code)
+	if code == "" {
+		fail(w, 400, "验证码不能为空")
+		return
+	}
+	c.mu.Lock()
+	_, found := c.findInstance(id)
+	c.mu.Unlock()
+	if !found {
+		fail(w, 404, "实例不存在")
+		return
+	}
+	dir := c.instanceDir(id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		fail(w, 500, "建实例目录失败: "+err.Error())
+		return
+	}
+	if err := os.WriteFile(filepath.Join(dir, smsCodeFileName), []byte(code), 0o600); err != nil {
+		fail(w, 500, "写入验证码失败: "+err.Error())
+		return
+	}
+	ok(w, map[string]any{"ok": true})
+}
+
+// waitSmsCode 轮询实例目录，等前端把验证码写进来。
+func waitSmsCode(ctx context.Context, dir string, timeout time.Duration) (string, error) {
+	p := filepath.Join(dir, smsCodeFileName)
+	deadline := time.Now().Add(timeout)
+	for {
+		if b, err := os.ReadFile(p); err == nil {
+			code := strings.TrimSpace(string(b))
+			_ = os.Remove(p)
+			if code != "" {
+				return code, nil
+			}
+		}
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("等待输入验证码超时（%s）", timeout)
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// smsCodeHandlerForInstance 是子进程在 -run 模式下使用的验证码回调：
+// 提示写进日志（网页面板通过日志流即可看到），验证码从实例目录读取。
+func smsCodeHandlerForInstance(dir string) func(*netease.SmsChallenge) (string, error) {
+	return func(ch *netease.SmsChallenge) (string, error) {
+		if ch.Upstream {
+			log.Printf("[短信] 网易要求先上行短信：请用 %s 向 %s 发送 %q，发送完成后网关会自动继续（无需再操作）", ch.Phone, ch.Number, ch.Content)
+			return "", nil // 返回空串即可：内部会带 up_content 轮询
+		}
+		log.Printf("[短信] 验证码已发往 %s，请在网页面板该实例的卡片里填写验证码", ch.Phone)
+		code, err := waitSmsCode(context.Background(), dir, 10*time.Minute)
+		if err != nil {
+			return "", err
+		}
+		log.Println("[短信] 已收到验证码，继续登录 ...")
+		return code, nil
+	}
+}
+
+// smsCodeHandlerForCLI 是单房间 CLI 模式下的验证码回调：
+// 优先用 -sms-code 给的值，其次在终端交互输入（非交互环境直接报错）。
+func smsCodeHandlerForCLI(pre string) func(*netease.SmsChallenge) (string, error) {
+	used := false
+	return func(ch *netease.SmsChallenge) (string, error) {
+		if ch.Upstream {
+			log.Printf("[短信] 网易要求先上行短信：请用 %s 向 %s 发送 %q，发送完成后网关会自动继续（无需再操作）", ch.Phone, ch.Number, ch.Content)
+			return "", nil
+		}
+		if pre != "" && !used {
+			used = true
+			return strings.TrimSpace(pre), nil
+		}
+		if !stdinIsTerminal() {
+			return "", errors.New("需要短信验证码：请用 -sms-code 指定，或在终端里交互运行")
+		}
+		fmt.Fprintf(os.Stderr, "[短信] 验证码已发往 %s，请输入收到的验证码: ", ch.Phone)
+		reader := bufio.NewReader(os.Stdin)
+		line, err := reader.ReadString('\n')
+		if err != nil && strings.TrimSpace(line) == "" {
+			return "", fmt.Errorf("读取验证码失败: %w", err)
+		}
+		code := strings.TrimSpace(line)
+		if code == "" {
+			return "", errors.New("验证码为空")
+		}
+		return code, nil
+	}
+}
+
+// stdinIsTerminal 判断标准输入是不是终端（非交互环境不能等待人工输入）。
+func stdinIsTerminal() bool {
+	st, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return st.Mode()&os.ModeCharDevice != 0
 }
 
 /* ============================ 静态文件 ============================ */
@@ -2697,8 +3100,27 @@ func loadRunConfig(path string) (*runConfigFile, error) {
 	}
 	wipe(b)
 	_ = os.Remove(path) // 明文配置只在启动瞬间存在过，读完即删
-	if rc.Username == "" || rc.Password == "" || rc.Target == "" {
-		return nil, fmt.Errorf("实例配置缺少 username/password/target")
+	// 按登录方式校验必填项：sauth 没有账号密码，短信方式没有密码。
+	mode, modeErr := funauth.ParseLoginMode(rc.LoginMode)
+	if modeErr != nil {
+		return nil, modeErr
+	}
+	if rc.Target == "" {
+		return nil, fmt.Errorf("实例配置缺少 target")
+	}
+	switch mode {
+	case funauth.ModeSauth:
+		if rc.Sauth == "" {
+			return nil, fmt.Errorf("实例配置缺少 sauth 登录态")
+		}
+	case funauth.ModeNetEaseSms:
+		if rc.Username == "" {
+			return nil, fmt.Errorf("实例配置缺少手机号（username）")
+		}
+	default:
+		if rc.Username == "" || rc.Password == "" {
+			return nil, fmt.Errorf("实例配置缺少 username/password")
+		}
 	}
 	return &rc, nil
 }

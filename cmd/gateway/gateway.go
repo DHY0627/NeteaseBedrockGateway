@@ -1,4 +1,4 @@
-// 房主网关的"看护"逻辑：4399 登录 → 开房 → 信令/NetherNet 监听 → 转发，
+// 房主网关的"看护"逻辑：账号登录 → 开房 → 信令/NetherNet 监听 → 转发，
 // 并在房间失效（中转连接断开、房间被服务器回收）时自动重新开房。
 //
 // 与 main.go 的分工：
@@ -19,6 +19,7 @@ import (
 	"time"
 
 	funauth "NeteaseBedrockGateway/internal/auth"
+	"NeteaseBedrockGateway/internal/netease"
 	"NeteaseBedrockGateway/internal/room"
 
 	"github.com/Happy2018new/nemc-tan-lobby-solver/core/nethernet"
@@ -41,6 +42,15 @@ type gatewayConfig struct {
 	gameType               uint8
 	versionString          string
 
+	loginMode funauth.LoginMode // 登录方式：4399 / netease-email / netease-phone / netease-sms / sauth
+	sauth     string            // loginMode=sauth 时使用：一段已有的 sauth 登录态 JSON
+	// 短信验证码回调（loginMode=netease-sms 时必须提供）
+	onSmsCode func(*netease.SmsChallenge) (string, error)
+	// 登录过程提示回调（设备注册、上行短信指引等）
+	onNotice func(string)
+	// 网易设备指纹缓存文件路径（留空使用默认值）
+	deviceCache string
+
 	roomFile  string        // 房间信息落盘文件（默认 room.json，同目录再写一个 room.txt）
 	keepalive time.Duration // 房间存活检查间隔，0 表示关闭检查
 }
@@ -50,7 +60,7 @@ type gateway struct {
 	cfg gatewayConfig
 
 	mu          sync.Mutex
-	cli         *g79client.Client  // 4399 客户端（凭据刷新/查询房间用）
+	cli         *g79client.Client  // 游戏客户端会话（凭据刷新/查询房间用）
 	cred        *room.CreateResult // 开房凭据（连接中转用）
 	credFails   int                // 连续获取凭据失败次数，达到阈值后强制重新登录
 	roomID      uint32
@@ -77,7 +87,7 @@ type roomRecord struct {
 // run 是网关主循环：建立房间并服务玩家；房间失效时自动重建。
 func (g *gateway) run(ctx context.Context) error {
 	if err := g.login(ctx); err != nil {
-		return fmt.Errorf("4399 登录失败: %w", err)
+		return fmt.Errorf("登录失败: %w", err)
 	}
 
 	netherID, err := randUint64()
@@ -139,10 +149,22 @@ func (g *gateway) run(ctx context.Context) error {
 	return nil
 }
 
-// login 做一次 4399 登录 + x19 认证。
+// login 做一次账号登录 + x19 认证（4399 与网易账号共用同一条 x19 认证链）。
 func (g *gateway) login(ctx context.Context) error {
-	log.Println("[1/6] 4399 登录 + x19 认证 ...")
-	cli, _, err := funauth.Login(ctx, g.cfg.username, g.cfg.password, funauth.LoginOptions{})
+	mode := g.cfg.loginMode
+	if mode == "" {
+		mode = funauth.Mode4399
+	}
+	log.Printf("[1/6] %s 登录 + x19 认证 ...", funauth.ModeLabel(mode))
+	cli, _, err := funauth.LoginWith(ctx, funauth.Credential{
+		Mode:            mode,
+		Account:         g.cfg.username,
+		Password:        g.cfg.password,
+		Sauth:           g.cfg.sauth,
+		OnSmsCode:       g.cfg.onSmsCode,
+		OnNotice:        g.cfg.onNotice,
+		DeviceCachePath: g.cfg.deviceCache,
+	}, funauth.LoginOptions{})
 	if err != nil {
 		return err
 	}
@@ -155,7 +177,7 @@ func (g *gateway) login(ctx context.Context) error {
 }
 
 // refreshCredential 获取（必要时先重新登录）一份可用的开房凭据。
-// 4399 登录有频率限制（实测 60~180 秒），所以只在凭据连续失败后才重新登录。
+// 账号登录有频率限制（4399 实测 60~180 秒），所以只在凭据连续失败后才重新登录。
 func (g *gateway) refreshCredential(ctx context.Context) error {
 	for ctx.Err() == nil {
 		g.mu.Lock()
@@ -164,7 +186,7 @@ func (g *gateway) refreshCredential(ctx context.Context) error {
 
 		if cli == nil {
 			if err := g.login(ctx); err != nil {
-				log.Printf("[房主] 重新登录 4399 失败: %v（60 秒后重试，登录有限频）", err)
+				log.Printf("[房主] 重新登录失败: %v（60 秒后重试，登录有限频）", err)
 				g.sleep(ctx, 60*time.Second)
 				continue
 			}

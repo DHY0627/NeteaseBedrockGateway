@@ -52,6 +52,7 @@
 | **房间自动看护**  | 中转连接断开、房间被网易回收时**自动重新开房**；房间号落盘到 `room.json` / `room.txt`        |
 | **保活与状态**   | 周期性确认房间仍在，并打印在线人数 / 运行时长 / 重建次数                                  |
 | **多玩家**     | 每个玩家一条独立转发链路，互不影响                                                |
+| **多种登录方式**  | 除了 4399 账号，还可以用**网易邮箱 + 密码**、**网易手机号 + 密码**、**网易手机号 + 短信验证码**、**SAuth 登录态**登录（见下方「登录方式」） |
 |  **自带诊断工具** | 33 个排查/逆向小工具（转发包解码、Java 协议探测、抓包分析……）                             |
 
 ---
@@ -303,7 +304,7 @@ NeteaseBedrockGateway -uninstall      # 卸载该 systemd 服务（仅 Linux，�
 
 | 区块 | 说明 |
 |---|---|
-| 账号管理 | 维护多个 4399 账号；列表只显示账号名与掩码密码（如 `am••••`），**明文与密文都不会下发给前端** |
+| 账号管理 | 维护多个账号，每个账号可选 4399 / 网易邮箱 / 网易手机号（密码）/ 网易手机号（短信）/ SAuth 五种登录方式；列表只显示账号名与掩码凭据，**明文与密文都不会下发给前端** |
 | 网关实例 | 每个实例一个独立子进程：启动 / 停止、状态、在线人数、房间号、转发目标；「打开网关日志」实时查看该实例输出（SSE 推送） |
 | 命令设置 | 每个实例可挂多条命令，在 网关启动 / 网关停止 / 登录成功 / 房间创建 / 房间号变化 / 房间重建 / 玩家加入 / 玩家离开 / 存活检查失败 时执行 |
 | 全局设置 | 控制台用户名 / 密码（密码留空 = 不更改）、是否允许公网访问 |
@@ -311,10 +312,49 @@ NeteaseBedrockGateway -uninstall      # 卸载该 systemd 服务（仅 Linux，�
 命令占位符（执行时替换成实际值）：
 `{&roomid}` `{&timestamp}` `{&datetime}` `{&account}` `{&instancename}` `{&server}` `{&capacity}` `{&players}` `{&event}`
 
+### 登录方式
+
+开房需要先有一个能登录《我的世界》中国版（x19）的账号。除了原有的 **4399 账号**，现在还支持直接用网易账号登录：
+
+| 登录方式 | `-login-mode` | 需要提供 | 说明 |
+| --- | --- | --- | --- |
+| 4399 账号 | `4399`（默认） | 账号 + 密码 | 原来的方式，走 4399 登录后再做 x19 认证 |
+| 网易邮箱 | `netease-email` | 邮箱 + 密码 | 走网易 mpay（`service.mkey.163.com`）登录 |
+| 网易手机号 | `netease-phone` | 手机号 + 密码 | 同上，账号名填 11 位手机号 |
+| 网易手机号（短信） | `netease-sms` | 手机号 | 需要人工填验证码，见下 |
+| SAuth 登录态 | `sauth` | 一段 `sauth_json` | 已有登录态时直接复用，跳过账号密码 |
+
+五种方式登录成功后**完全等价**：都换到同一条 x19 认证链（`uni_sauth` → `login-cookie` → `authentication-otp`），后续开房、转发、保活逻辑没有任何区别。
+
+**控制台里怎么选**：「账号管理 → 添加/编辑账号」顶部选「登录方式」，表单会跟着变（邮箱/手机号、密码、sauth 三选一），登录方式会显示在账号列表和实例卡片上。
+
+**CLI 怎么选**：
+
+```bash
+# 网易邮箱
+NeteaseBedrockGateway -login-mode netease-email -u you@example.com -p 邮箱密码 -target 1.2.3.4:19132
+# 网易手机号 + 密码
+NeteaseBedrockGateway -login-mode netease-phone -u 13800000000 -p 账号密码 -target 1.2.3.4:19132
+# 网易手机号 + 短信验证码
+NeteaseBedrockGateway -login-mode netease-sms -u 13800000000 -sms-code 123456 -target 1.2.3.4:19132
+# 已有 sauth 登录态（内容太长就写进文件用 @ 读）
+NeteaseBedrockGateway -login-mode sauth -sauth @sauth.json -target 1.2.3.4:19132
+```
+
+**短信验证码怎么填**：
+
+- 控制台：实例启动后，该实例卡片上会出现「短信验证码」输入框（只在运行中的短信实例上出现），把收到的验证码填进去点「提交验证码」（回车也行）。网关把它写进 `instances/<实例>/smscode.txt`，子进程秒级读到并立刻使用。
+- CLI：`-sms-code 123456`；不传这个参数时，会在**交互终端**里提示你输入（非交互环境如 systemd 会直接报错，请用 `-sms-code`）。
+- 有时网易会要求「上行短信」：日志里会打印一条 `[网易] 请先发送短信 ...`，按提示给指定号码发一条短信，网关会自己轮询验证结果。
+
+**SAuth 登录态**：从别处（例如你自己的程序、抓包工具）拿到的那段 `sauth_json` 原样粘贴即可，裸 JSON 和 `{"sauth_json":"..."}` 包裹两种都能识别；字段顺序与原始类型会被逐字节保留后透传，因为官方对字段顺序敏感。控制台会对它做掩码显示（只显示 `••••••`）并加密保存。
+
+**设备信息缓存**：网易登录需要上报一份设备信息（设备 ID + 密钥），网关会在首次登录时自动注册，并缓存到 `<用户目录>/.neteasebedrockgateway/device.json`（权限 0600）。想换位置用 `-device-cache 路径`。缓存不可写时会退化为每次重新注册，不影响登录。
+
 ### 安全说明
 
 - **控制台密码**：`PBKDF2-HMAC-SHA256(salt, 200000 次)` 派生，只存 salt 与校验值，**明文不落盘**；校验用常量时间比较。
-- **4399 账号密码**：`AES-256-GCM` 加密后存为 `passwordEnc`。加密密钥由控制台密码派生，**只在登录后驻留内存，退出登录立即清零** —— 所以开房必须先登录控制台。更换控制台密码时，会用新密钥把全部账号密码重新加密。
+- **账号密码 / SAuth 登录态**：`AES-256-GCM` 加密后存为 `passwordEnc` / `sauthEnc`。加密密钥由控制台密码派生，**只在登录后驻留内存，退出登录立即清零** —— 所以开房必须先登录控制台。更换控制台密码时，会用新密钥把全部账号密码与 sauth 登录态重新加密。
 - 老版本配置里明文保存的账号密码，会在**首次登录时自动加密迁移**。
 - 登录失败 5 次锁定 30 秒；会话上限 8 小时；响应带 `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: no-referrer`。
 - 配置文件 `nbg-console.json` 以 `0600` 写入（内含加密凭据，已在 `.gitignore` 里）；`instances/` 是各实例的运行时目录。
@@ -333,8 +373,12 @@ NeteaseBedrockGateway -uninstall      # 卸载该 systemd 服务（仅 Linux，�
 
 | 参数                | 默认值                               | 说明                                       |
 | ----------------- | --------------------------------- | ---------------------------------------- |
-| `-u`              | —                                 | 4399 用户名（**单房间 CLI 模式**用；只跑 Web 控制台不需要） |
-| `-p`              | —                                 | 4399 密码（**单房间 CLI 模式**用；只跑 Web 控制台不需要） |
+| `-u`              | —                                 | 账号（**单房间 CLI 模式**用；只跑 Web 控制台不需要）。4399 用户名 / 网易邮箱 / 手机号，取决于 `-login-mode` |
+| `-p`              | —                                 | 账号密码（**单房间 CLI 模式**用；只跑 Web 控制台不需要）。`-login-mode sauth` 时不需要 |
+| `-login-mode`     | `4399`                            | 账号登录方式：`4399` / `netease-email` / `netease-phone` / `netease-sms` / `sauth`（见上方「登录方式」） |
+| `-sauth`          | 空                                 | SAuth 登录态：直接给 `sauth_json` 内容，或 `@文件路径` 从文件读（仅 `-login-mode sauth`） |
+| `-sms-code`       | 空                                 | 网易短信登录的验证码（仅 `-login-mode netease-sms`；留空则在交互终端提示输入） |
+| `-device-cache`   | 空（= `<用户目录>/.neteasebedrockgateway/device.json`） | 网易登录的设备信息缓存文件路径 |
 | `-port`           | `8765`                            | **Web 控制台端口**（1-65535）                     |
 | `-room-name`      | `NeteaseBedrockGateway Host Room` | 房间名称（其实没用）                               |
 | `-capacity`       | `8`                               | 房间容量                                     |
@@ -423,9 +467,10 @@ NeteaseBedrockGateway/
 │   ├── funauth4399/          4399 登录 + 认证 + 开房凭据（CLI 演示）
 │   └── diag/                 诊断与逆向小工具（33 个，见下节）
 ├── internal/
-│   ├── auth/                 4399 OAuth 登录 + x19 认证
+│   ├── auth/                 登录入口：4399 / 网易邮箱 / 网易手机号（密码·短信）/ SAuth → x19 认证
+│   ├── netease/              网易账号登录（mpay：设备注册、发送/校验短信、邮箱·手机号登录、sauth 构造）
 │   ├── room/                 开房凭据生成（TanLobbyCreate）
-│   └── wplauncher/           4399X19Login 登录库（复制自 DHY0627/4399X19Login，MIT）
+│   └── wplauncher/           4399X19Login 登录库（复制自 DHY0627/4399X19Login，MIT）+ Sauth 抽象
 ├── cmd/gateway/webui/        Web 控制台前端（login/index + assets，被 go:embed 打进二进制）
 ├── tools/frida/              逆向网易客户端用的 frida 脚本
 ├── scripts/                  build.ps1 / build.sh 本地交叉编译脚本
@@ -592,11 +637,13 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 | 位置 | 来源 | 许可证 |
 |---|---|---|
 | `internal/wplauncher/` | [DHY0627/4399X19Login](https://github.com/DHY0627/4399X19Login) | MIT（原文保留在 `internal/wplauncher/LICENSE`） |
+| `internal/netease/` | 移植自 [DHY0627/NeteaseLogin](https://github.com/DHY0627/NeteaseLogin) 的网易 mpay 登录实现 | 同本项目（AGPL-3.0） |
 | `tools/frida/` | 本项目自写的逆向脚本 | 同本项目 |
 
 ### 思路与实现参考
 
 - [Koud-Wind/Netease-minecraft-LAN-connects-to-Server](https://github.com/Koud-Wind/Netease-minecraft-LAN-connects-to-Server)：Java 版「房主开房 + 引流到服务器」同思路
+- [DHY0627/NeteaseLogin](https://github.com/DHY0627/NeteaseLogin)：网易账号（邮箱 / 手机号 / 短信 / SAuth）登录《我的世界》中国版 x19 的 Go 实现
 - [GeyserMC/Geyser](https://github.com/GeyserMC/Geyser)、配套扩展 [DHY0627/GeyserNetease](https://github.com/DHY0627/GeyserNetease)（基于 [LoHJG/GeyserNetease](https://github.com/LoHJG/GeyserNetease)）
 - ProtoHax（`dev.sora.relay`）：中继 / 中间层实现参考
 

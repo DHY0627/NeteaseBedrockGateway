@@ -109,11 +109,11 @@ func decodeResponseX19(b []byte) (*ResponseX19Base, error) {
 
 // UniCookie 复刻 WPLauncherAPI.uniCookie
 // 向网易侧上报 SDK 登录态
-func (c *X19Client) UniCookie(ctx context.Context, cookie *Cookie4399) error {
-	body, err := json.Marshal(cookie)
-	if err != nil {
-		return err
+func (c *X19Client) UniCookie(ctx context.Context, cookie Sauth) error {
+	if cookie == nil {
+		return errors.New("uni_sauth 上报缺少登录态")
 	}
+	body := []byte(cookie.RawJSON())
 	b, err := c.do(ctx, http.MethodPost, uniSauth, body, "application/json")
 	if err != nil {
 		return err
@@ -136,8 +136,11 @@ func (c *X19Client) UniCookie(ctx context.Context, cookie *Cookie4399) error {
 
 // LoginCookie 复刻 WPLauncherAPI.loginCookie
 // POST /login-otp 获取一次性 OTP
-func (c *X19Client) LoginCookie(ctx context.Context, cookie *Cookie4399) (*X19LoginOtp, error) {
-	b, err := c.do(ctx, http.MethodPost, coreBase+"/login-otp", cookie.toWrappedCookie(), "application/json")
+func (c *X19Client) LoginCookie(ctx context.Context, cookie Sauth) (*X19LoginOtp, error) {
+	if cookie == nil {
+		return nil, errors.New("login-otp 缺少登录态")
+	}
+	b, err := c.do(ctx, http.MethodPost, coreBase+"/login-otp", []byte(cookie.AuthJSON()), "application/json")
 	if err != nil {
 		return nil, err
 	}
@@ -192,14 +195,17 @@ type authVersion struct {
 
 // Authentication 复刻 WPLauncherAPI.authentication
 // POST /authentication-otp 使用 OTP 换取正式 session (entity_id + token)
-func (c *X19Client) Authentication(ctx context.Context, cookie *Cookie4399, otp *X19LoginOtp, latestVersion string) (*AuthEntity, error) {
-	sauth := cookie.toSauthJSON()
+func (c *X19Client) Authentication(ctx context.Context, cookie Sauth, otp *X19LoginOtp, latestVersion string) (*AuthEntity, error) {
+	if cookie == nil {
+		return nil, errors.New("authentication-otp 缺少登录态")
+	}
+	sauth := cookie.SauthJSON()
 
 	env := environment{
 		OSName:       "windows",
 		OSVersion:    "Microsoft Windows 10",
 		MacAddr:      "00-00-00-00-00-00",
-		UDID:         cookie.UDID,
+		UDID:         cookie.UDIDValue(),
 		AppVersion:   latestVersion,
 		SDKVersion:   "",
 		Network:      "",

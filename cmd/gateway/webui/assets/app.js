@@ -44,13 +44,38 @@ const PLACEHOLDERS = [
   { ph: '{&roomid}', desc: '当前房间号' },
   { ph: '{&timestamp}', desc: 'Unix 时间戳（秒）' },
   { ph: '{&datetime}', desc: '本地时间，如 2026-10-10 03:20:00' },
-  { ph: '{&account}', desc: '实例使用的 4399 账号' },
+  { ph: '{&account}', desc: '实例使用的账号' },
   { ph: '{&instancename}', desc: '实例名称' },
   { ph: '{&server}', desc: '转发目标 IP:端口' },
   { ph: '{&capacity}', desc: '房间最大人数' },
   { ph: '{&players}', desc: '当前在线玩家数' },
   { ph: '{&event}', desc: '触发事件，如 room.changed' },
 ];
+
+// 登录方式：与后端 internal/auth 的 LoginMode 一一对应
+const MODE_INFO = {
+  '4399': {
+    label: '4399 账号', accountLabel: '4399 账号', accountPh: '4399 用户名',
+    password: true, passwordLabel: '4399 密码', sauth: false,
+  },
+  'netease-email': {
+    label: '网易邮箱密码', accountLabel: '网易邮箱', accountPh: 'someone@example.com',
+    password: true, passwordLabel: '网易账号密码', sauth: false,
+  },
+  'netease-phone': {
+    label: '网易手机号密码', accountLabel: '手机号', accountPh: '13800000000',
+    password: true, passwordLabel: '网易账号密码', sauth: false,
+  },
+  'netease-sms': {
+    label: '网易手机号短信', accountLabel: '手机号', accountPh: '13800000000',
+    password: false, passwordLabel: '', sauth: false,
+  },
+  'sauth': {
+    label: 'SAuth 登录态', accountLabel: '', accountPh: '',
+    password: false, passwordLabel: '', sauth: true,
+  },
+};
+function modeInfo(mode) { return MODE_INFO[mode] || MODE_INFO['4399']; }
 
 const $ = sel => document.querySelector(sel);
 function esc(s) {
@@ -86,15 +111,19 @@ let cmdCtx = { instanceId: null, cmdId: null };
 function renderAccounts() {
   const body = $('#accountBody');
   if (!state.accounts.length) {
-    body.innerHTML = `<tr><td colspan="5" class="empty">还没有账号，点下方「添加账号」新增一个</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" class="empty">还没有账号，点下方「添加账号」新增一个</td></tr>`;
     return;
   }
   body.innerHTML = state.accounts.map(a => {
     const owner = state.instances.find(i => i.accountId === a.id);
+    let cred = '<span class="muted">—</span>';
+    if (a.passwordMask) cred = esc(a.passwordMask);
+    else if (a.hasSauth) cred = `<span class="muted" title="已保存 sauth 登录态">${esc(a.sauthMask || '••••••')}</span>`;
     return `<tr>
       <td>${esc(a.note || '—')}</td>
-      <td class="mono">${esc(a.account)}</td>
-      <td class="mono muted">${esc(a.passwordMask || '••••••')}</td>
+      <td>${esc(a.modeLabel || '4399 账号')}</td>
+      <td class="mono">${esc(a.account || '—')}</td>
+      <td class="mono muted">${cred}</td>
       <td>${owner ? esc(owner.name) : '<span class="muted">未使用</span>'}</td>
       <td class="actions">
         <button class="btn-link" data-acc-edit="${a.id}">编辑</button>
@@ -118,6 +147,12 @@ function renderInstances() {
     box.innerHTML = `<div class="card empty">还没有实例，点右上角「创建实例」新建一个</div>`;
     return;
   }
+  // 用户正在输入短信验证码时本轮不重绘（否则会丢焦点、丢输入）
+  const focused = document.activeElement;
+  if (focused && focused.dataset && focused.dataset.smsInput) return;
+  const keepSms = {};
+  box.querySelectorAll('[data-sms-input]').forEach(el => { if (el.value) keepSms[el.dataset.smsInput] = el.value; });
+
   box.innerHTML = state.instances.map(inst => {
     const running = inst.status === 'running';
     const cmds = inst.commands || [];
@@ -133,6 +168,15 @@ function renderInstances() {
         <button class="btn-link danger" data-cmd-del="${inst.id}:${c.id}">删除</button>
       </div>`).join('') : `<div class="cmd-empty">暂无命令；点「创建命令行」添加，例如房间号变化时发通知</div>`;
 
+    // 短信登录的实例：运行中才需要人工输入验证码（后端会把输入写进实例目录）
+    const smsRow = running && inst.needSmsCode ? `
+        <div class="smsrow">
+          <span class="k">短信验证码</span>
+          <input type="text" data-sms-input="${inst.id}" placeholder="收到验证码后填这里" maxlength="12" autocomplete="off">
+          <button class="btn btn-sm btn-primary" data-sms-submit="${inst.id}">提交验证码</button>
+          <span class="hint">若日志提示需要上行短信，请先按日志里的号码发送，再回来提交</span>
+        </div>` : '';
+
     return `<div class="instance">
       <div class="instance-head">
         <span class="name">${esc(inst.name || '未命名实例')}</span>
@@ -146,6 +190,7 @@ function renderInstances() {
       <div class="instance-body">
         <div class="kv">
           <div class="item"><span class="k">使用账号</span><span class="v mono">${esc(inst.account || '（账号已删除）')}</span></div>
+          <div class="item"><span class="k">登录方式</span><span class="v">${esc(inst.loginModeLabel || '4399 账号')}</span></div>
           <div class="item"><span class="k">房间号</span><span class="v mono">${running && inst.roomId ? esc(inst.roomId) : '—'}</span></div>
           <div class="item"><span class="k">服务器</span><span class="v mono">${esc(inst.target)}</span></div>
           <div class="item"><span class="k">在线玩家</span><span class="v">${running ? inst.players : 0} / ${esc(inst.capacity)}</span></div>
@@ -153,6 +198,7 @@ function renderInstances() {
           <div class="item"><span class="k">命令数</span><span class="v">${cmds.length} 条（${cmds.filter(c => c.enabled).length} 条启用）</span></div>
         </div>
         ${inst.status === 'error' && inst.msg ? `<div class="alert alert-warn" style="margin:10px 0 0">${esc(inst.msg)}</div>` : ''}
+        ${smsRow}
         <div class="subhead">
           <span>命令设置</span>
           <div class="spacer"></div>
@@ -162,6 +208,11 @@ function renderInstances() {
       </div>
     </div>`;
   }).join('');
+
+  Object.entries(keepSms).forEach(([id, v]) => {
+    const el = box.querySelector(`[data-sms-input="${id}"]`);
+    if (el && !el.value) el.value = v;
+  });
 }
 
 /* ------------------------------ 设置 / 占位符 ------------------------------ */
@@ -185,7 +236,9 @@ function renderAccountOptions(selectedId, currentInstanceId) {
   sel.innerHTML = state.accounts.map(a => {
     const owner = state.instances.find(i => i.accountId === a.id && i.id !== currentInstanceId);
     const mine = a.id === selectedId;
-    const label = a.account + (a.note ? '（' + a.note + '）' : '') + (owner && !mine ? ` — 已被「${owner.name}」使用` : '');
+    const who = a.account || (a.hasSauth ? 'SAuth 登录态' : '未命名');
+    const label = who + (a.note ? '（' + a.note + '）' : '') + '·' + (a.modeLabel || '4399 账号') +
+                  (owner && !mine ? ` — 已被「${owner.name}」使用` : '');
     return `<option value="${a.id}" ${mine ? 'selected' : ''} ${owner && !mine ? 'disabled' : ''}>${esc(label)}</option>`;
   }).join('');
 }
@@ -208,15 +261,54 @@ async function refreshStatuses() {
 }
 
 /* ------------------------------ 账号操作 ------------------------------ */
+const SAUTH_PLACEHOLDER = '{"gameid":"x19","sdkuid":"...","sessionid":"...","platform":"pc"}';
+
+// 按登录方式显示/隐藏「账号 / 密码 / sauth」三类输入
+function syncAccountModeFields(mode) {
+  const info = modeInfo(mode);
+  $('#acAccountField').hidden = info.sauth;
+  $('#acPasswordField').hidden = !info.password;
+  $('#acSauthField').hidden = !info.sauth;
+  if (info.accountLabel) {
+    $('#acAccountLabel').innerHTML = esc(info.accountLabel) + '<span class="req">*</span>';
+  }
+  if (info.accountPh) $('#acAccount').placeholder = info.accountPh;
+  if (info.passwordLabel) {
+    $('#acPasswordLabel').innerHTML = esc(info.passwordLabel) + '<span class="req">*</span>';
+  }
+}
+$('#acMode').addEventListener('change', () => {
+  const mode = $('#acMode').value;
+  syncAccountModeFields(mode);
+  if (mode === 'sauth') $('#acSauth').focus(); else $('#acAccount').focus();
+});
 $('#btnAddAccount').addEventListener('click', () => {
   editingAccountId = null;
   $('#accountModalTitle').textContent = '添加账号';
   $('#acNote').value = ''; $('#acAccount').value = ''; $('#acPassword').value = '';
+  $('#acSauth').value = ''; $('#acSauth').placeholder = SAUTH_PLACEHOLDER;
+  $('#acMode').value = '4399';
+  syncAccountModeFields('4399');
   openModal('accountModal');
 });
 $('#accountSave').addEventListener('click', async () => {
-  const payload = { note: $('#acNote').value.trim(), account: $('#acAccount').value.trim(), password: $('#acPassword').value };
-  if (!payload.account || !payload.password) { toast('账号和密码都要填', 'err'); return; }
+  const mode = $('#acMode').value;
+  const info = modeInfo(mode);
+  const payload = {
+    note: $('#acNote').value.trim(),
+    mode,
+    account: info.sauth ? '' : $('#acAccount').value.trim(),
+    password: info.password ? $('#acPassword').value : '',
+    sauth: info.sauth ? $('#acSauth').value.trim() : '',
+  };
+  // 先拦明显错误，后端还会再校验一次
+  if (info.sauth) {
+    if (!payload.sauth && !editingAccountId) { toast('请粘贴 sauth 登录态', 'err'); return; }
+  } else if (!payload.account) {
+    toast('请填写' + info.accountLabel, 'err'); return;
+  } else if (info.password && !payload.password && !editingAccountId) {
+    toast('请填写' + info.passwordLabel, 'err'); return;
+  }
   try {
     if (editingAccountId) await PUT('/api/accounts/' + editingAccountId, payload);
     else await POST('/api/accounts', payload);
@@ -231,8 +323,12 @@ function editAccount(id) {
   editingAccountId = id;
   $('#accountModalTitle').textContent = '编辑账号';
   $('#acNote').value = a.note || '';
-  $('#acAccount').value = a.account;
+  $('#acMode').value = a.mode || '4399';
+  $('#acAccount').value = a.account || '';
   $('#acPassword').value = ''; // 后端只回掩码，绝不回填明文；留空=不更改
+  $('#acSauth').value = '';
+  $('#acSauth').placeholder = a.hasSauth ? '已保存 sauth 登录态（留空 = 不更改）' : SAUTH_PLACEHOLDER;
+  syncAccountModeFields($('#acMode').value);
   openModal('accountModal');
 }
 async function delAccount(id) {
@@ -294,6 +390,18 @@ async function toggleInstance(id) {
     await refreshAll();
     toast(start ? `实例「${inst.name}」已启动` : `实例「${inst.name}」已停止`);
   } catch (e) { toast(e.message, 'err'); await refreshAll(); }
+}
+
+/* ------------------------------ 短信验证码 ------------------------------ */
+async function submitSmsCode(id) {
+  const el = document.querySelector(`[data-sms-input="${id}"]`);
+  const code = ((el && el.value) || '').trim();
+  if (!code) { toast('请先填写验证码', 'err'); if (el) el.focus(); return; }
+  try {
+    await POST(`/api/instances/${id}/sms-code`, { code });
+    if (el) el.value = '';
+    toast('验证码已提交，网关会立即使用');
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 /* ------------------------------ 命令行 ------------------------------ */
@@ -436,7 +544,7 @@ $('#gsReset').addEventListener('click', async () => {
 /* ------------------------------ 事件委托 ------------------------------ */
 $('#instanceList').addEventListener('click', e => {
   const el = e.target.closest('[data-inst-toggle],[data-inst-log],[data-inst-edit],[data-inst-del],' +
-                               '[data-cmd-add],[data-cmd-edit],[data-cmd-del],[data-cmd-toggle]');
+                               '[data-cmd-add],[data-cmd-edit],[data-cmd-del],[data-cmd-toggle],[data-sms-submit]');
   if (!el) return;
   const d = el.dataset;
   if (d.instToggle) return toggleInstance(d.instToggle);
@@ -447,6 +555,12 @@ $('#instanceList').addEventListener('click', e => {
   if (d.cmdEdit) { const p = d.cmdEdit.split(':'); return openCmdModal(p[0], p[1]); }
   if (d.cmdDel) { const p = d.cmdDel.split(':'); return delCmd(p[0], p[1]); }
   if (d.cmdToggle) { const p = d.cmdToggle.split(':'); return toggleCmd(p[0], p[1]); }
+  if (d.smsSubmit) return submitSmsCode(d.smsSubmit);
+});
+// 验证码输入框里回车即提交
+$('#instanceList').addEventListener('keydown', e => {
+  const inp = e.target.closest ? e.target.closest('[data-sms-input]') : null;
+  if (inp && e.key === 'Enter') { e.preventDefault(); submitSmsCode(inp.dataset.smsInput); }
 });
 $('#instanceList').addEventListener('change', e => {
   const sel = e.target.closest('[data-cmd-trigger]');

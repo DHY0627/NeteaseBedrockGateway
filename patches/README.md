@@ -158,3 +158,32 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 | RakNet / 接线层 | 2.11 专用类路径 | **保持上游原样**，未改动 |
 
 补丁不含版本相关改动，因此**不需要**跟随 Geyser 升级重写接线层；升级 Geyser 时通常只需确认 `extension.yml` 的 `api:`。
+
+---
+
+## 预编译产物（不想自己编译就用这个）
+
+`dist/` 里放了**已经编译好、且实测进服成功**的扩展，省去装 JDK 和 Gradle：
+
+| 文件 | 大小 | SHA256 |
+|---|---|---|
+| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,116,884 B | `A9802EE7DF560B86787314704D240714888B5B9472907C998633887B8A246786` |
+| `dist/geysernetease-geyser29-compat.patch` | 10,669 B | `23F5EF6B521182FDC1C2B2F75C8C6EF0A752E0C2D00CB8D7DE8435F2CF1B498A` |
+
+构建来源：上游 `2987a328062b0eef0d78de40d8b0a37955615903` + 本目录补丁 +
+`extension.yml` 的 `api:` 改为 `2.9.4`。同一条命令重建出来的产物大小一致（字节差仅来自构建时间戳）。
+
+**实测环境**：Geyser-Velocity **2.10.1 build 1174**（`git-master-7b60de1`）+ Velocity 3.5.1 + 网易版客户端。
+
+部署位置：`plugins/Geyser-Velocity/extensions/GeyserNeteaseExtension.jar`
+（Standalone 则是 `extensions/GeyserNeteaseExtension.jar`）。
+
+启动后必须能在控制台看到扩展加载成功的日志，否则网易链路不会生效：
+
+```
+已启用扩展 GeyserNetEase
+NetEase Extension initialized — RakNet v8 clients supported.
+```
+
+> 给别人部署时注意：**`api:` 必须 ≤ 对方 Geyser 的 API 版本**。
+> 2.9.4 这个值在 2.9.4 ~ 2.10.1 上都能加载；若对方是 2.11.x，请改用 fork 分支构建。

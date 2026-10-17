@@ -169,8 +169,8 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,117,301 B | `4DC0DDAF6C0D0268EAF17B7ECB9FE36ACA70A4776CCF961CA877B5EAA437F045` |
-| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 3,119,690 B | `F49AE6364C76643FBF5DA32F758363799B514800BF94A06C5A5812B84514D334` |
+| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,117,733 B | `0178A628631763C373EA558F086554AFA7EC8D1B7AD04222793472BB0214A9AD` |
+| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 3,120,120 B | `5B8BACA0C4A2332023DD821780EDFE9793FB07FEB193735AAC0D93774F443655` |
 | `dist/geysernetease-geyser29-compat.patch` | 10,669 B | `23F5EF6B521182FDC1C2B2F75C8C6EF0A752E0C2D00CB8D7DE8435F2CF1B498A` |
 
 构建来源：上游 `2987a328062b0eef0d78de40d8b0a37955615903` + 本目录补丁 +
@@ -185,6 +185,12 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 > - **点击屏幕出现 `geyser:xxx` 提示**：Geyser 扩展命令（`geyser` 根命令）会进入下发的
 >   `AvailableCommandsPacket`，网易客户端点击时把它渲染成 `geyser:xxx`。现改为在下发前从
 >   命令表中剔除 `geyser` 根命令，Java 服务器的原生命令保持不变。
+>
+> **聊天问题（诊断中）**：网易客户端 CHAT/POPUP 包在标准字段后还有一个额外字符串字段，
+> 其语义尚未确认，目前仍按历史行为写空串。若实测聊天不显示，可加
+> `-DGeyserNetease.TextExtraField=message` 让扩展改写消息原文来验证该字段作用；
+> 同时打开 `-DGeyserNetease.Debug=true` 会在控制台打印收到的每个 `TextPacket`
+> （type / message / filtered / sourceName / xuid），便于定位。
 
 **实测环境**：Geyser-Velocity **2.10.1 build 1174**（`git-master-7b60de1`）+ Velocity 3.5.1 + 网易版客户端。
 

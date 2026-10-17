@@ -4,7 +4,8 @@
 	branch = netease
 [submodule "third_party/g79client"]
 	path = third_party/g79client
-	url = https://github.com/UCKETX/g79client.git
+	url = https://github.com/DHY0627/g79client.git
+	branch = main
 [submodule "third_party/nemc-tan-lobby-solver"]
 	path = third_party/nemc-tan-lobby-solver
 	url = https://github.com/DHY0627/nemc-tan-lobby-solver.git

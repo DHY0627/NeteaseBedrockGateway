@@ -607,16 +607,17 @@ A：网易客户端使用 RakNet 协议版本 8、自定义协议版本号，且
 > `go.mod` 用相对路径把它们接进来：`replace <模块路径> => ./third_party/<目录名>`。
 > `third_party/` 内代码版权与许可证归各自作者所有（submodule 只是引用，不改变许可）。
 
-其中前两个用的是**我们自己的 fork**（都带了自己的补丁）：
+三个依赖用的都是**我们自己的 fork**（都带了自己的补丁）：
 
 | 依赖 | 本项目的 fork | 上游 | 我们改了什么 |
 |---|---|---|---|
 | `nemc-tan-lobby-solver` | [DHY0627/nemc-tan-lobby-solver](https://github.com/DHY0627/nemc-tan-lobby-solver) | [UCKETX/nemc-tan-lobby-solver](https://github.com/UCKETX/nemc-tan-lobby-solver)（**无 LICENSE**） | NetherNet 不丢首包、不可靠通道、Geyser Secure Cookie、SCTP CRC32C 小端、TanLobby 编解码补充（共 14 个文件，清单见 fork 的 `FORK-NOTICE.md`） |
 | `sandertv/go-raknet` | [DHY0627/go-raknet](https://github.com/DHY0627/go-raknet)（分支 `netease`） | [sandertv/go-raknet](https://github.com/sandertv/go-raknet) `v1.15.1`（MIT） | `conn.go`：`protocolVersion` 由 `11` 改为 `8`（网易客户端只认 RakNet 协议版本 8，发 11 会零数据），清单见 fork 的 `FORK-NOTICE.md` |
+| `Yeah114/g79client` | [DHY0627/g79client](https://github.com/DHY0627/g79client) | [UCKETX/g79client](https://github.com/UCKETX/g79client) `e837667` | `globals.go`：`selectAndroidPatchVersion` 在 packlist 版本领先于 patchlist 时按前缀逐级降级选择补丁版本（网易已把客户端包推进到 `3.10.0.300878`，而 patchlist 仍停在 `3.9.41.300665`，原先直接报 `no android patch version matches base prefix 3.10` 导致登录失败）；另补了表驱动单元测试 `globals_test.go` |
 
 > 三个 submodule 就对应上表三个依赖，`third_party/<目录名>` 即各自的检出位置：
 > `nemc-tan-lobby-solver` 跟踪 fork 的 `main`（`f2649a1`），`go-raknet` 跟踪 fork 的 `netease` 分支（`2e9d856`，基线 `v1.15.1`），
-> `g79client` 直接钉在上游 `UCKETX/g79client` 的 `e837667`（与本项目收到的版本完全一致，没有本地改动）。
+> `g79client` 跟踪 fork 的 `main`（`c76188c`，基线为上游 `e837667`，改动见上表）。
 > 要升级某个 fork：在 `third_party/<目录名>` 里 `git fetch && git checkout <新提交>`，回到仓库根目录 `git add third_party/<目录名>` 提交这个新指针即可（**不要**再执行 `go mod vendor`）。
 
 > ⚠️ `nemc-tan-lobby-solver` 上游**没有许可证文件**（fork 亦未新增），版权归原作者；本机自用不受分发条款约束，若要再分发请先联系原作者取得许可。

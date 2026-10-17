@@ -169,8 +169,8 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,117,733 B | `0178A628631763C373EA558F086554AFA7EC8D1B7AD04222793472BB0214A9AD` |
-| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 3,120,120 B | `5B8BACA0C4A2332023DD821780EDFE9793FB07FEB193735AAC0D93774F443655` |
+| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,118,064 B | `A1A4A4BEF64808904C5817BB4EFEDE4DC16DF0724EA08082513180119A4EC054` |
+| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 3,120,482 B | `698E87A22DC77DE5454ADF59ADB122C14D0A7416C6DC5B89B2AFD2C8120C40E5` |
 | `dist/geysernetease-geyser29-compat.patch` | 10,669 B | `23F5EF6B521182FDC1C2B2F75C8C6EF0A752E0C2D00CB8D7DE8435F2CF1B498A` |
 
 构建来源：上游 `2987a328062b0eef0d78de40d8b0a37955615903` + 本目录补丁 +
@@ -185,6 +185,10 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 > - **点击屏幕出现 `geyser:xxx` 提示**：Geyser 扩展命令（`geyser` 根命令）会进入下发的
 >   `AvailableCommandsPacket`，网易客户端点击时把它渲染成 `geyser:xxx`。现改为在下发前从
 >   命令表中剔除 `geyser` 根命令，Java 服务器的原生命令保持不变。
+> - **点击屏幕出现 `geyseropt:cooldown:non` 提示**：Geyser 的 `GeyserSession#sendJsonUIData`
+>   用 TIP 类型 `TextPacket` 传 JSON UI 数据（`geyseropt:cooldown:*`），依赖集成资源包的
+>   `hud_screen.json` 解析成冷却指示器；网易客户端不认这套 JSON UI，会把文本原样显示。
+>   现在 `SpoofedUpstream` 在下发前丢弃所有以 `geyseropt:` 开头的 TIP 文本。
 >
 > **聊天问题（诊断中）**：网易客户端 CHAT/POPUP 包在标准字段后还有一个额外字符串字段，
 > 其语义尚未确认，目前仍按历史行为写空串。若实测聊天不显示，可加

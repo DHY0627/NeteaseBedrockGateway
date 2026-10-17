@@ -155,6 +155,8 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 | 跳过 `ServerToClientHandshake` | 已有（`SKIP_ENCRYPTION`，默认开） | 本补丁提供 |
 | `ServerAddress` 修正 | 已有（`patchServerAddress`） | 本补丁提供 |
 | Java 侧嗅探 | 已有（`-DGeyserNetease.Sniff`） | 本补丁提供 |
+| ConfirmSkin 皮肤确认 | 已有（2026-10-17 修复） | 上游源码同步修复 |
+| `geyser` 命令表过滤 | 已有（2026-10-17 修复） | 上游源码同步修复 |
 | RakNet / 接线层 | 2.11 专用类路径 | **保持上游原样**，未改动 |
 
 补丁不含版本相关改动，因此**不需要**跟随 Geyser 升级重写接线层；升级 Geyser 时通常只需确认 `extension.yml` 的 `api:`。
@@ -167,11 +169,22 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,116,884 B | `A9802EE7DF560B86787314704D240714888B5B9472907C998633887B8A246786` |
+| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,117,301 B | `4DC0DDAF6C0D0268EAF17B7ECB9FE36ACA70A4776CCF961CA877B5EAA437F045` |
+| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 3,119,690 B | `F49AE6364C76643FBF5DA32F758363799B514800BF94A06C5A5812B84514D334` |
 | `dist/geysernetease-geyser29-compat.patch` | 10,669 B | `23F5EF6B521182FDC1C2B2F75C8C6EF0A752E0C2D00CB8D7DE8435F2CF1B498A` |
 
 构建来源：上游 `2987a328062b0eef0d78de40d8b0a37955615903` + 本目录补丁 +
-`extension.yml` 的 `api:` 改为 `2.9.4`。同一条命令重建出来的产物大小一致（字节差仅来自构建时间戳）。
+`extension.yml` 的 `api:` 改为 `2.9.4`，**并同步修复了 `SpoofedUpstream` 的皮肤确认与命令表问题**（见下节）。
+
+> 2026-10-17 更新：修复网易客户端两个已知问题（与 fork 分支同步）。
+> - **其他玩家自定义皮肤进入超时**：`ConfirmSkinSerializer` 对每条 entry 的
+>   `uuid` / `skinBytes` / `geoStr` 都会 `checkNotNull`，而原实现在 `StartGame` 时只填
+>   `valid + uidStr`，`uuid` 等字段为 null，编码阶段必然抛异常，客户端等不到皮肤确认而超时。
+>   现改为：删除空占位包，`PlayerSkin` / `PlayerList` 统一走 `sendSkinCsp`；真实皮肤发
+>   `valid=true` + 完整 `image`/`geo`，Persona / 4D 皮肤发 `valid=false` 空条目回退默认皮肤。
+> - **点击屏幕出现 `geyser:xxx` 提示**：Geyser 扩展命令（`geyser` 根命令）会进入下发的
+>   `AvailableCommandsPacket`，网易客户端点击时把它渲染成 `geyser:xxx`。现改为在下发前从
+>   命令表中剔除 `geyser` 根命令，Java 服务器的原生命令保持不变。
 
 **实测环境**：Geyser-Velocity **2.10.1 build 1174**（`git-master-7b60de1`）+ Velocity 3.5.1 + 网易版客户端。
 

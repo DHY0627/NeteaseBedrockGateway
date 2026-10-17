@@ -98,8 +98,8 @@ const defaultLevelID = "r6YhQdny6LU="
 
 func main() {
 	var (
-		username     = flag.String("u", "", "4399 用户名")
-		password     = flag.String("p", "", "4399 密码（单房间 CLI 模式用；Web 控制台端口是 -port）")
+		username     = flag.String("u", "", "账号（-login-mode 决定：4399 用户名 / 网易邮箱 / 网易手机号；单房间 CLI 模式用）")
+		password     = flag.String("p", "", "账号密码（4399 / 网易邮箱 / 网易手机号；单房间 CLI 模式用。Web 控制台端口是 -port）")
 		roomName     = flag.String("room-name", "NeteaseBedrockGateway Host Room", "房间名称")
 		roomCapacity = flag.Uint("capacity", 8, "房间容量")
 		roomPassword = flag.String("room-password", "", "房间密码（可留空）")

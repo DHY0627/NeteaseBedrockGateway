@@ -169,8 +169,8 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,118,064 B | `A1A4A4BEF64808904C5817BB4EFEDE4DC16DF0724EA08082513180119A4EC054` |
-| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 3,120,482 B | `698E87A22DC77DE5454ADF59ADB122C14D0A7416C6DC5B89B2AFD2C8120C40E5` |
+| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,120,759 B | `106DF6207B721829CEE237E9D7ED048317D3389FF910240F982CE2BD4C949DE4` |
+| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 3,123,143 B | `DAD868A644D3834C3471BB3FF1C14569C3E9F2C91C666C00D4E0BDC86DE8172C` |
 | `dist/geysernetease-geyser29-compat.patch` | 10,669 B | `23F5EF6B521182FDC1C2B2F75C8C6EF0A752E0C2D00CB8D7DE8435F2CF1B498A` |
 
 构建来源：上游 `2987a328062b0eef0d78de40d8b0a37955615903` + 本目录补丁 +
@@ -195,6 +195,21 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 > `-DGeyserNetease.TextExtraField=message` 让扩展改写消息原文来验证该字段作用；
 > 同时打开 `-DGeyserNetease.Debug=true` 会在控制台打印收到的每个 `TextPacket`
 > （type / message / filtered / sourceName / xuid），便于定位。
+
+> 2026-10-22 更新：畸形数据包加固（两个 jar 均已重新构建）。
+> 对客户端可控的长度 / 计数 / 索引全部加上限或校验，避免被构造包打成 OOM 或
+> 未捕获异常断连：
+> - `NeteaseCodecRegistry` 的 `EncodingSettings` 恢复上游默认上限
+>   （列表 1536 / 字节数组 1MB / 网络 NBT 512MB / 物品 NBT 100KB / 字符串 32KB），
+>   原先全部是 `Integer.MAX_VALUE`，等于关闭了 bedrock-codec 的畸形包防护。
+> - `BiomeDefinitionList`（819/860）tag 数量上限 4096，并修掉 `length * 2` 的整数溢出
+>   （溢出为负会让 `isReadable` 检查失效，随后按恶意长度预分配 → 远程 OOM）。
+> - `ConfirmSkin` 条目上限 64、`PlayerEnchantOptions` 自定义附魔上限 256。
+> - `PlayerAuthInput`（630/686/766）的 `inputMode` / `playMode` 索引越界改为受控异常。
+> - `InventoryTransaction` 的 `source` / `toItem` / 手持物品判空；方块哈希表构建异常隔离。
+> - 资源包 `chunkIndex` 负值 / 越界校验（原先 `channel.position(负值)` 会抛未捕获异常）。
+> - `LoginEncryptionUtils` 与表单响应包加 try/catch，畸形包断开或记录后忽略。
+
 
 **实测环境**：Geyser-Velocity **2.10.1 build 1174**（`git-master-7b60de1`）+ Velocity 3.5.1 + 网易版客户端。
 

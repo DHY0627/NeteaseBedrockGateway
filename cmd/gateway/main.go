@@ -138,6 +138,12 @@ func main() {
 	netherMsgLimit = *netherMsgLimitFlag
 	debugLog = *debugShort || *debugLong
 
+	// EULA：与 Minecraft 服务端一致，未同意则拒绝启动。
+	// 放在所有模式分派之前，CLI / Web 控制台 / 服务安装都受同一份 eula.txt 约束。
+	if !checkEULA() {
+		os.Exit(1)
+	}
+
 	// ---------------- 模式分派 ----------------
 	// 1) -run <file>：由 Web 控制台拉起的单实例模式。参数从 JSON 读，账号密码不出现在命令行里。
 	if *runConfig != "" {

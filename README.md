@@ -25,6 +25,7 @@
   - [Windows](#windows)
   - [Linux / macOS](#linux--macos)
 - [使用方法](#使用方法)
+  - [0. 首次运行：同意 EULA](#0-首次运行同意-eula)
   - [1. 启动网关](#1-启动网关名称设置其实没用)
   - [2. 玩家进服](#2-玩家进服)
   - [3. 目标服务器要求](#3-目标服务器要求)
@@ -167,6 +168,41 @@ Get-ChildItem .\cmd -Directory | ForEach-Object {
 ```
 ---
 ## 使用方法
+
+### 0. 首次运行：同意 EULA
+
+与 Minecraft 服务端一样，本程序启动前需要你同意《最终用户许可协议》：
+
+1. 第一次启动时，程序会在**工作目录**下生成 `eula.txt`，内容默认是 `eula=false`：
+
+```ini
+# 将下面一行改成 eula=true，表示你已阅读并同意《NeteaseBedrockGateway 最终用户许可协议》。
+# 协议全文：https://eula.redstone.xin/neteasegateway
+# 生成时间：2026-10-23 00:00:00
+eula=false
+```
+
+2. 阅读协议全文：<https://eula.redstone.xin/neteasegateway>
+3. 把 `eula=false` 改成 `eula=true`，保存后重新启动。
+
+如果未同意，程序会打印下面的提示并直接退出（不会开房、不会监听端口）：
+
+```
+============================================================
+ 你还没有同意《NeteaseBedrockGateway 最终用户许可协议》。
+
+ 协议全文：https://eula.redstone.xin/neteasegateway
+
+ 阅读并同意后，请把 /opt/netease-gateway/eula.txt 中的
+   eula=false
+ 改成
+   eula=true
+ 然后重新启动本程序。
+============================================================
+```
+
+> 该检查对 **单房间 CLI 模式、Web 控制台模式、`-install` 注册服务** 全部生效；
+> `eula.txt` 按工作目录定位，因此用 `systemd` 常驻时（`WorkingDirectory` 已写入安装目录）与手动启动读的是同一份文件。
 
 ### 1. 启动网关（名称设置其实没用）
 

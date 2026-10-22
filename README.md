@@ -206,20 +206,29 @@ eula=false
 
 **用 systemd 常驻时（Linux）**
 
-`-install` 生成的服务把 `WorkingDirectory` 设为**你执行 `-install` 时的当前目录**，
-因此 EULA 的完整流程是：
+`-install` 生成的服务把 `WorkingDirectory` 设为**你执行 `-install` 时的当前目录**。
+在交互式终端里执行 `-install` 时，如果同目录下还没有同意过 EULA，程序会先展示协议地址并询问：
+
+```
+  注册为 systemd 服务前，需要先同意《NeteaseBedrockGateway 最终用户许可协议》。
+
+  协议全文：https://eula.redstone.xin/neteasegateway
+
+  是否同意以上协议？输入 y 同意，n 取消 (y/n):
+```
+
+输入 `y` 会自动把 `eula.txt` 写成 `eula=true` 并继续安装；输入 `n`（或非法输入后取消）直接退出。
+已经同意过（`eula.txt` 为 `eula=true`）时不会重复询问。
 
 ```bash
-cd /opt/netease-gateway                            # 你的安装目录
-./NeteaseBedrockGateway                            # 首次运行：生成 eula.txt 后退出（退出码 1）
-vi eula.txt                                        # 把 eula=false 改成 eula=true
-./NeteaseBedrockGateway -install                   # 注册服务（会打印工作目录与 eula.txt 的绝对路径）
+cd /opt/netease-gateway
+./NeteaseBedrockGateway -install        # 会询问是否同意 EULA，输入 y
 sudo systemctl daemon-reload
 sudo systemctl enable --now netease-gateway
 ```
 
-上述 `-install` 之所以能执行，本身就说明同目录下的 `eula.txt` 已同意（否则会在 `-install` 之前退出），
-所以服务启动时读到的就是同一份已同意的文件。
+> `-install` 在**非交互环境**（脚本、`</dev/null`、CI）里执行时不会等待输入，
+> 而是打印「请把 eula.txt 改成 eula=true」的指引后退出（退出码 1）。
 
 如果服务启动失败，执行 `journalctl -u netease-gateway -n 50` 或查看安装目录下的 `host.log`，
 都会看到「你还没有同意…」的提示。按提示把对应路径的 `eula.txt` 改成 `eula=true`，

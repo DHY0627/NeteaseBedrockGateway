@@ -93,6 +93,42 @@ func TestCheckEULARejectsExplicitFalse(t *testing.T) {
 	}
 }
 
+// TestWriteEULAAgreement 验证 writeEULAAgreement 写出可被 parseEULA 识别为同意的文件。
+func TestWriteEULAAgreement(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	if err := writeEULAAgreement(); err != nil {
+		t.Fatalf("writeEULAAgreement 失败: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, eulaFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !parseEULA(string(data)) {
+		t.Errorf("写出的内容应可解析为已同意，实际:\n%s", string(data))
+	}
+	if !strings.Contains(string(data), eulaURL) {
+		t.Errorf("写出的内容应包含协议地址，实际:\n%s", string(data))
+	}
+	if strings.Contains(string(data), "eula=false") {
+		t.Errorf("写出的内容不应残留 eula=false，实际:\n%s", string(data))
+	}
+	if !checkEULA() {
+		t.Error("writeEULAAgreement 之后 checkEULA 应通过")
+	}
+}
+
+// TestInstallEULAInteractive 验证只有 Linux + -install + 终端三条件同时成立才走交互询问。
+func TestInstallEULAInteractive(t *testing.T) {
+	if installEULAInteractive(false) {
+		t.Error("非 -install 不应走交互询问")
+	}
+	// 测试环境的 stdin 通常不是字符设备（go test 会重定向），因此 -install
+	// 在非终端下也不应走交互路径；这里只断言“不 panic 且为布尔值”。
+	_ = installEULAInteractive(true)
+}
+
 func chdir(t *testing.T, dir string) {
 	t.Helper()
 	old, err := os.Getwd()

@@ -140,8 +140,13 @@ func main() {
 
 	// EULA：与 Minecraft 服务端一致，未同意则拒绝启动。
 	// 放在所有模式分派之前，CLI / Web 控制台 / 服务安装都受同一份 eula.txt 约束。
-	if !checkEULA() {
-		os.Exit(1)
+	// 例外：-install 注册服务时，如果当前是交互终端，就直接询问 y/n，
+	// 同意后自动把 eula.txt 写成 eula=true 再继续安装，省去手动跑一次再改文件。
+	interactiveEULA := installEULAInteractive(*installSvc)
+	if !checkEULAWithHint(!interactiveEULA) {
+		if !interactiveEULA || !promptEULA() {
+			os.Exit(1)
+		}
 	}
 
 	// ---------------- 模式分派 ----------------
@@ -2987,15 +2992,6 @@ func smsCodeHandlerForCLI(pre string) func(*netease.SmsChallenge) (string, error
 		}
 		return code, nil
 	}
-}
-
-// stdinIsTerminal 判断标准输入是不是终端（非交互环境不能等待人工输入）。
-func stdinIsTerminal() bool {
-	st, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return st.Mode()&os.ModeCharDevice != 0
 }
 
 /* ============================ 静态文件 ============================ */

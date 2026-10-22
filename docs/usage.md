@@ -284,8 +284,9 @@ NeteaseBedrockGateway -u <账号> -p <密码> -target <服务器:端口> [可选
 ### 6.1 Linux（systemd）
 
 > **EULA 前置条件**：服务的工作目录（`WorkingDirectory`）里必须有已同意的 `eula.txt`。
-> 第一次使用请先 `cd` 到该目录手动运行一次 `./NeteaseBedrockGateway` 生成 `eula.txt`，
-> 把 `eula=false` 改成 `eula=true`，然后再启动服务。若服务因未同意 EULA 而退出，
+> 在交互式终端里执行 `-install` 时，如果还没同意，程序会给出协议地址并询问 `(y/n)`，
+> 输入 `y` 会自动写 `eula.txt` 并继续安装；非交互环境（脚本/`</dev/null`）下不会等待输入，
+> 而是提示你先手动把 `eula.txt` 改成 `eula=true`。服务若因未同意 EULA 而退出，
 > `journalctl -u netease-gateway -n 50` 和 `host.log` 里都会给出需要修改的具体路径。
 
 `/etc/systemd/system/netease-gateway.service`：

@@ -73,6 +73,10 @@ func checkEULA() bool {
 	fmt.Fprintln(os.Stderr, "   然后重新启动本程序。")
 	fmt.Fprintln(os.Stderr, "  ============================================================")
 	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "  提示：如果打算用 systemd 常驻（-install），请先在当前目录完成上面的确认，")
+	fmt.Fprintln(os.Stderr, "        再执行 -install —— 服务的 WorkingDirectory 就是当前目录，")
+	fmt.Fprintln(os.Stderr, "        启动时读的是同一份 eula.txt。")
+	fmt.Fprintln(os.Stderr, "")
 	return false
 }
 

@@ -3142,6 +3142,9 @@ func installSystemd(port int) {
 		fatalf("取可执行文件路径失败: %v", err)
 	}
 	wd, _ := os.Getwd()
+	// EULA 检查已在 main 里通过；这里把服务将要读取的 eula.txt 路径明确打印出来，
+	// 避免用户注册服务后不知道服务的工作目录在哪、要改哪个 eula.txt。
+	eulaPath := filepath.Join(wd, eulaFile)
 	unit := fmt.Sprintf(`[Unit]
 Description=NeteaseBedrockGateway 控制台
 After=network-online.target
@@ -3161,6 +3164,8 @@ WantedBy=multi-user.target
 `, wd, exe, port, wd, wd)
 
 	const unitPath = "/etc/systemd/system/netease-gateway.service"
+	fmt.Printf("工作目录（服务 WorkingDirectory）: %s\n", wd)
+	fmt.Printf("EULA 确认文件（服务启动时读取）: %s\n\n", eulaPath)
 	if os.Geteuid() != 0 {
 		fmt.Printf("需要 root 权限写入 %s。请以 root 执行下面两条命令：\n\n", unitPath)
 		fmt.Printf("  sudo tee %s > /dev/null <<'EOF'\n%sEOF\n\n", unitPath, unit)

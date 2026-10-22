@@ -204,6 +204,27 @@ eula=false
 > 该检查对 **单房间 CLI 模式、Web 控制台模式、`-install` 注册服务** 全部生效；
 > `eula.txt` 按工作目录定位，因此用 `systemd` 常驻时（`WorkingDirectory` 已写入安装目录）与手动启动读的是同一份文件。
 
+**用 systemd 常驻时（Linux）**
+
+`-install` 生成的服务把 `WorkingDirectory` 设为**你执行 `-install` 时的当前目录**，
+因此 EULA 的完整流程是：
+
+```bash
+cd /opt/netease-gateway                            # 你的安装目录
+./NeteaseBedrockGateway                            # 首次运行：生成 eula.txt 后退出（退出码 1）
+vi eula.txt                                        # 把 eula=false 改成 eula=true
+./NeteaseBedrockGateway -install                   # 注册服务（会打印工作目录与 eula.txt 的绝对路径）
+sudo systemctl daemon-reload
+sudo systemctl enable --now netease-gateway
+```
+
+上述 `-install` 之所以能执行，本身就说明同目录下的 `eula.txt` 已同意（否则会在 `-install` 之前退出），
+所以服务启动时读到的就是同一份已同意的文件。
+
+如果服务启动失败，执行 `journalctl -u netease-gateway -n 50` 或查看安装目录下的 `host.log`，
+都会看到「你还没有同意…」的提示。按提示把对应路径的 `eula.txt` 改成 `eula=true`，
+然后 `sudo systemctl restart netease-gateway` 即可。
+
 ### 1. 启动网关（名称设置其实没用）
 
 ```bash

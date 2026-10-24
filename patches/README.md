@@ -169,8 +169,8 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,121,351 B | `3D2766EE27249AA6BF031E163F1003E9C242274F01BF7FA14C1FEB95441AC3A4` |
-| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 3,123,652 B | `E786A0AA7F6E6ACDB968A1EBCD309E2F60D409D9F6481DFCCF57CDF1401C17EE` |
+| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 11,516,495 B | `17F07B0B78E7B822062F9FA020BB8FFAAC6510E41CF09595B62DD4A066D9D825` |
+| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 11,518,509 B | `6E95EF2828EA296A35AB0145ADEA0A1D2BDF316CCF908BB32606E62077470AC9` |
 | `dist/geysernetease-geyser29-compat.patch` | 10,669 B | `23F5EF6B521182FDC1C2B2F75C8C6EF0A752E0C2D00CB8D7DE8435F2CF1B498A` |
 
 构建来源：上游 `2987a328062b0eef0d78de40d8b0a37955615903` + 本目录补丁 +
@@ -222,6 +222,17 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 >   双保险，遇到当前 codec 未注册的包只警告一次并跳过，不再断连。
 > - 注意：`NetEaseUpstreamHandler` 里用于选取方块/物品注册表的 `spoofedVersion` 仍是
 >   `DEFAULT_BEDROCK_PROTOCOL`（需要最新方块表做哈希），与上面的协议版本是两回事。
+
+> 2026-10-25 更新（二）：新增**调试日志加密上传**（两个 jar 均已重新构建，体积从 ~3.1 MB 增至 ~11.5 MB）。
+> - 打开 debug（`-DGeyserNetease.Debug=true` 或 `debug-mode: true`）后：Geyser 启动时从
+>   `cdn.redstone.xin/key/` 拉取 **ML-KEM-1024** 公钥与预置密文；结束时把本次日志
+>   GZIP 压缩，用 ML-KEM 封装出的共享密钥经 HKDF-SHA256 派生 **AES-256-GCM** 密钥加密，
+>   打包成 `<10位id>.zlog` 上传到 `log.4f4t.top`，上传完再退出。
+> - 体积变大是因为 shadowJar 内 relocate 了 BouncyCastle（JDK 21 没有内置 ML-KEM）。
+> - 可用系统属性覆盖：`GeyserNetease.ZLogUploadUrl`、`GeyserNetease.ZLogApiKey`、
+>   `GeyserNetease.KemPublicKeyUrl`、`GeyserNetease.KemEncUrl`、`GeyserNetease.ZLogFile`、
+>   `GeyserNetease.ZLogMaxBytes`。
+> - `.zlog` 格式与服务端 Python 解密示例见 GeyserNetease 仓库的 `docs/ZLOG.md`。
 
 
 **实测环境**：Geyser-Velocity **2.10.1 build 1174**（`git-master-7b60de1`）+ Velocity 3.5.1 + 网易版客户端。

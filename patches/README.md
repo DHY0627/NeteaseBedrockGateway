@@ -169,8 +169,8 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 11,516,879 B | `57ADB613210B05D8E6D7A8A7590B4786420AA80D45ADF5422508581239E0CB8D` |
-| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 11,518,893 B | `C4E2955060E01F01117FF877C22FA2DE8E9E3DFA47C17277DF34CC1D9B39779F` |
+| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 11,517,011 B | `DB153830A9A4A501F58656FC3A23D7781B85B8E49440CF0147AB058FFF747826` |
+| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 11,519,021 B | `1EA847F16F99D0A806042B05519160C979D88AB2D37BAEB12105F47E7596EEE8` |
 | `dist/geysernetease-geyser29-compat.patch` | 10,669 B | `23F5EF6B521182FDC1C2B2F75C8C6EF0A752E0C2D00CB8D7DE8435F2CF1B498A` |
 
 构建来源：上游 `2987a328062b0eef0d78de40d8b0a37955615903` + 本目录补丁 +
@@ -225,14 +225,17 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 > 2026-10-25 更新（二）：新增**调试日志加密上传**（两个 jar 均已重新构建，体积从 ~3.1 MB 增至 ~11.5 MB）。
 > - 打开 debug（`-DGeyserNetease.Debug=true` 或 `debug-mode: true`）后：Geyser 启动时从
->   `cdn.redstone.xin/key/` 拉取 **ML-KEM-1024** 公钥与预置密文；结束时把本次日志
->   GZIP 压缩，用 ML-KEM 封装出的共享密钥经 HKDF-SHA256 派生 **AES-256-GCM** 密钥加密，
+>   `cdn.redstone.xin/key/` 拉取 **ML-KEM-1024** 公钥；结束时把本次日志 GZIP 压缩，
+>   用 ML-KEM 封装出的共享密钥做 **encrypt-then-MAC**（XOR 密钥流 + HMAC-SHA256）加密，
 >   打包成 `<10位id>.zlog` 上传到 `log.4f4t.top`，上传完再退出。
+> - `.zlog` 载荷与 `ML-KEM-完整技术文档.md` 4.2 / 5.5 节逐字节一致：
+>   `kem_ct(1568) ‖ nonce(16) ‖ tag(32) ‖ ct'`，服务端只需 `private.key` 即可解封，
+>   完整 Python 解密脚本见 GeyserNetease 仓库的 `docs/ZLOG.md`。
+> - `kem.enc` 仅作为 CDN 密钥文件可用性探测，**不参与加密**（客户端没有私钥，解不开它）。
 > - 体积变大是因为 shadowJar 内 relocate 了 BouncyCastle（JDK 21 没有内置 ML-KEM）。
 > - 可用系统属性覆盖：`GeyserNetease.ZLogUploadUrl`、`GeyserNetease.ZLogApiKey`、
 >   `GeyserNetease.KemPublicKeyUrl`、`GeyserNetease.KemEncUrl`、`GeyserNetease.ZLogFile`、
 >   `GeyserNetease.ZLogMaxBytes`。
-> - `.zlog` 格式与服务端 Python 解密示例见 GeyserNetease 仓库的 `docs/ZLOG.md`。
 
 
 **实测环境**：Geyser-Velocity **2.10.1 build 1174**（`git-master-7b60de1`）+ Velocity 3.5.1 + 网易版客户端。

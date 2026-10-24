@@ -169,8 +169,8 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,120,759 B | `106DF6207B721829CEE237E9D7ED048317D3389FF910240F982CE2BD4C949DE4` |
-| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 3,123,143 B | `DAD868A644D3834C3471BB3FF1C14569C3E9F2C91C666C00D4E0BDC86DE8172C` |
+| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 3,121,351 B | `3D2766EE27249AA6BF031E163F1003E9C242274F01BF7FA14C1FEB95441AC3A4` |
+| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 3,123,652 B | `E786A0AA7F6E6ACDB968A1EBCD309E2F60D409D9F6481DFCCF57CDF1401C17EE` |
 | `dist/geysernetease-geyser29-compat.patch` | 10,669 B | `23F5EF6B521182FDC1C2B2F75C8C6EF0A752E0C2D00CB8D7DE8435F2CF1B498A` |
 
 构建来源：上游 `2987a328062b0eef0d78de40d8b0a37955615903` + 本目录补丁 +
@@ -209,6 +209,19 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 > - `InventoryTransaction` 的 `source` / `toItem` / 手持物品判空；方块哈希表构建异常隔离。
 > - 资源包 `chunkIndex` 负值 / 越界校验（原先 `channel.position(负值)` 会抛未捕获异常）。
 > - `LoginEncryptionUtils` 与表单响应包加 try/catch，畸形包断开或记录后忽略。
+
+> 2026-10-25 更新：修复「进服即被踢」的 `getPacketDefinition` NPE（两个 jar 均已重新构建）。
+> - 现象：`io.netty.handler.codec.EncoderException: java.lang.NullPointerException: Cannot invoke
+>   "BedrockPacketDefinition.getId()" because the return value of "BedrockCodec.getPacketDefinition(Class)"
+>   is null`，随后 `已因 An internal error occurred! 与远程 Java 服务器断开了连接`。
+> - 原因：扩展的 `SpoofedUpstream` 把 `getProtocolVersion()` 覆写成 Geyser 的
+>   `GameProtocol.DEFAULT_BEDROCK_PROTOCOL`。Geyser **2.11.3** 的默认协议已到 **v2193**
+>   （MC 26.50+），而本扩展的网易 codec 最高只到 **v860**；Geyser 于是按 v2193 发包，
+>   v870+ 才有的包类在 v860 codec 里没有注册 → 编码阶段 `getPacketDefinition` 返回 null → 踢人。
+> - 修复：删除该覆写，回归基类行为（返回会话真实 codec 版本）；另加 `skipUnknownPacket`
+>   双保险，遇到当前 codec 未注册的包只警告一次并跳过，不再断连。
+> - 注意：`NetEaseUpstreamHandler` 里用于选取方块/物品注册表的 `spoofedVersion` 仍是
+>   `DEFAULT_BEDROCK_PROTOCOL`（需要最新方块表做哈希），与上面的协议版本是两回事。
 
 
 **实测环境**：Geyser-Velocity **2.10.1 build 1174**（`git-master-7b60de1`）+ Velocity 3.5.1 + 网易版客户端。

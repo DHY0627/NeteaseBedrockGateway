@@ -169,7 +169,7 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 11,518,576 B | `F871BB97E5158DFB1C1E42EC65289D4BEE8987A9139010259A98061B9F945AD1` |
+| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 11,518,903 B | `A22444CCFC61CC095F27559B9050ECA8D6CE426B0FA98F66E8E180522ED80158` |
 | `dist/geysernetease-geyser29-compat.patch` | 10,669 B | `23F5EF6B521182FDC1C2B2F75C8C6EF0A752E0C2D00CB8D7DE8435F2CF1B498A` |
 
 构建来源：上游 `2987a328062b0eef0d78de40d8b0a37955615903` + 本目录补丁 +

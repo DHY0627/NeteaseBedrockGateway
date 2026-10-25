@@ -1,8 +1,8 @@
 # Geyser 2.9 / 2.10 兼容补丁（GeyserNetease）
 
-配套 fork [DHY0627/GeyserNetease](https://github.com/DHY0627/GeyserNetease) 适配的是 **Geyser 2.11.3**，用到的 `org.geysermc.geyser.network.bedrock.raknet.*`、`BedrockPingHandler`、`RaknetServer` 这些类在 **Geyser 2.9.x / 2.10.x 上不存在**，那份源码根本编译不过。
+配套 fork [DHY0627/GeyserNetease](https://github.com/DHY0627/GeyserNetease) 的 **`main` 分支已切换为 Geyser 2.9.4 兼容版本**（`api: 2.9.4`），`dist/` 里的预编译 jar 直接就能用在 2.9.4 ~ 2.10.1 上。之前基于 Geyser 2.11.3 的源码保留在该仓库的 `2.11.3` 分支（含 `org.geysermc.geyser.network.bedrock.raknet.*`、`BedrockPingHandler`、`RaknetServer` 等 2.11 专用类），**不再发布新构建**。
 
-本目录的补丁把这套扩展的**协议行为**移植到能在 2.9.x / 2.10.x 上编译的上游源码 [LoHJG/GeyserNetease](https://github.com/LoHJG/GeyserNetease) 上。
+本目录的补丁则把这套扩展的**协议行为**移植到上游源码 [LoHJG/GeyserNetease](https://github.com/LoHJG/GeyserNetease) 上，方便从上游自行构建。
 
 - 文件：`geysernetease-geyser29-compat.patch`
 - 上游基线：`2987a328062b0eef0d78de40d8b0a37955615903`（2026-07-24 `Delete lib directory`）
@@ -150,7 +150,7 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 ## 与 fork 的关系
 
-| 修复 | fork（2.11.3） | 上游 + 本补丁（2.9.x / 2.10.x） |
+| 修复 | fork（现在是 2.9.4 版） | 上游 + 本补丁（2.9.x / 2.10.x） |
 |---|---|---|
 | 跳过 `ServerToClientHandshake` | 已有（`SKIP_ENCRYPTION`，默认开） | 本补丁提供 |
 | `ServerAddress` 修正 | 已有（`patchServerAddress`） | 本补丁提供 |
@@ -169,12 +169,18 @@ git apply /path/to/geysernetease-geyser29-compat.patch
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 11,517,488 B | `3122043189CC6D2B753C1955B7DA06C21B7BC97DF1D31E2B9CC299D571E33991` |
-| `dist/GeyserNeteaseExtension-2.11.3-api.jar` | 11,519,477 B | `942A124D003CA6795E06A4D8F85ECB781F9A08698E965A779DA2FCCB32B97491` |
+| `dist/GeyserNeteaseExtension-2.9.4-api.jar` | 11,517,133 B | `E6212C4E533632909F020CCF2F7B5D37C6AA1F4425B5A896C5FA2E5BB6EF3504` |
 | `dist/geysernetease-geyser29-compat.patch` | 10,669 B | `23F5EF6B521182FDC1C2B2F75C8C6EF0A752E0C2D00CB8D7DE8435F2CF1B498A` |
 
 构建来源：上游 `2987a328062b0eef0d78de40d8b0a37955615903` + 本目录补丁 +
 `extension.yml` 的 `api:` 改为 `2.9.4`，**并同步修复了 `SpoofedUpstream` 的皮肤确认与命令表问题**（见下节）。
+
+> **2026-10-25 起：只发布 Geyser 2.9.4 兼容版本。**
+> fork（`DHY0627/GeyserNetease`）的 `main` 分支已整体切换为 2.9.4 版
+> （`api: 2.9.4`、Java 17、`geyser-core 2.9.5-SNAPSHOT` / `bedrock-codec 3.0.0.Beta12`），
+> CI 之后发布的每个 Release 都是 **2.9.4 兼容构建**。
+> 之前基于 Geyser 2.11.3 的源码保留在 fork 的 `2.11.3` 分支，**不再发布新构建**，
+> 因此 `dist/` 里也移除了 `GeyserNeteaseExtension-2.11.3-api.jar`。
 
 > 2026-10-17 更新：修复网易客户端两个已知问题（与 fork 分支同步）。
 > - **其他玩家自定义皮肤进入超时**：`ConfirmSkinSerializer` 对每条 entry 的
@@ -251,4 +257,4 @@ NetEase Extension initialized — RakNet v8 clients supported.
 ```
 
 > 给别人部署时注意：**`api:` 必须 ≤ 对方 Geyser 的 API 版本**。
-> 2.9.4 这个值在 2.9.4 ~ 2.10.1 上都能加载；若对方是 2.11.x，请改用 fork 分支构建。
+> 2.9.4 这个值在 2.9.4 ~ 2.10.1 上都能加载；若对方是 2.11.x，请自行从 fork 的 `2.11.3` 分支构建（该分支不再发布构建产物）。
